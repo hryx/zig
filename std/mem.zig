@@ -439,6 +439,7 @@ pub fn readIntBE(comptime T: type, bytes: []const u8) T {
         return @bitCast(T, readIntBE(@IntType(false, T.bit_count), bytes));
     }
     assert(bytes.len == @sizeOf(T));
+    if (T == u8) return bytes[0];
     var result: T = 0;
     {
         comptime var i = 0;
@@ -456,6 +457,7 @@ pub fn readIntLE(comptime T: type, bytes: []const u8) T {
         return @bitCast(T, readIntLE(@IntType(false, T.bit_count), bytes));
     }
     assert(bytes.len == @sizeOf(T));
+    if (T == u8) return bytes[0];
     var result: T = 0;
     {
         comptime var i = 0;
@@ -488,6 +490,37 @@ pub fn writeInt(buf: []u8, value: var, endian: builtin.Endian) void {
                 bits >>= 8;
             }
         },
+    }
+    assert(bits == 0);
+}
+
+pub fn writeIntBE(comptime T: type, buf: *[@sizeOf(T)]u8, value: T) void {
+    const uint = @IntType(false, @typeOf(value).bit_count);
+    var bits = @truncate(uint, @bitCast(uint, value));
+    if (uint == u8) {
+        buf[0] = bits;
+        return;
+    }
+    var index: usize = buf.len;
+    while (index != 0) {
+        index -= 1;
+
+        buf[index] = @truncate(u8, bits);
+        bits >>= 8;
+    }
+    assert(bits == 0);
+}
+
+pub fn writeIntLE(comptime T: type, buf: *[@sizeOf(T)]u8, value: T) void {
+    const uint = @IntType(false, @typeOf(value).bit_count);
+    var bits = @truncate(uint, @bitCast(uint, value));
+    if (uint == u8) {
+        buf[0] = bits;
+        return;
+    }
+    for (buf) |*b| {
+        b.* = @truncate(u8, bits);
+        bits >>= 8;
     }
     assert(bits == 0);
 }
