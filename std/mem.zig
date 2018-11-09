@@ -518,7 +518,7 @@ pub fn writeIntLE(comptime T: type, buf: *[@sizeOf(T)]u8, value: T) void {
         buf[0] = bits;
         return;
     }
-    for (buf) |*b| {
+    for (buf.*) |*b| {
         b.* = @truncate(u8, bits);
         bits >>= 8;
     }
