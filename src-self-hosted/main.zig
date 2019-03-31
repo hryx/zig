@@ -86,6 +86,10 @@ pub fn main() !void {
             .exec = cmdBuildObj,
         },
         Command{
+            .name = "doc",
+            .exec = cmdDoc,
+        },
+        Command{
             .name = "fmt",
             .exec = cmdFmt,
         },
@@ -960,3 +964,32 @@ const CliPkg = struct {
         self.children.deinit();
     }
 };
+
+enum DocState = {
+    Start,
+    File,
+    FileComment,
+    FnDecl,
+    VarDecl,
+    DeclComment,
+    Field,
+    Return,
+    Name,
+    Type,
+    Symbol,
+    Value,
+    IntLiteral,
+    FloatLiteral,
+    StringLiteral,
+    StringLiteralC,
+    CharLiteral
+};
+
+fn cmdDoc(allocator: *Allocator, args: []const []const u8) anyerror!void {
+    var stdin = try io.getStdIn();
+    const buf = try stdin.readAllAlloc(allocator, 1000000);
+
+    for (buf) |c, i| {
+        //
+    }
+}

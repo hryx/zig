@@ -5,11 +5,13 @@
  * See http://opensource.org/licenses/MIT
  */
 
+#include "analyze.hpp"
 #include "ast_render.hpp"
 #include "buffer.hpp"
 #include "codegen.hpp"
 #include "compiler.hpp"
 #include "config.h"
+#include "doc.hpp"
 #include "error.hpp"
 #include "os.hpp"
 #include "target.hpp"
@@ -31,6 +33,7 @@ static int print_full_usage(const char *arg0) {
         "  build-lib [source]           create library from source or object files\n"
         "  build-obj [source]           create object from source or assembly\n"
         "  builtin                      show the source code of that @import(\"builtin\")\n"
+        "  doc [source]                 generate HTML documentation for project"
         "  help                         show this usage information\n"
         "  id                           print the base64-encoded compiler id\n"
         "  init-exe                     initialize a `zig build` application in the cwd\n"
@@ -159,6 +162,7 @@ enum Cmd {
     CmdNone,
     CmdBuild,
     CmdBuiltin,
+    CmdDoc,
     CmdHelp,
     CmdRun,
     CmdTargets,
@@ -702,6 +706,8 @@ int main(int argc, char **argv) {
             } else if (strcmp(arg, "build-lib") == 0) {
                 cmd = CmdBuild;
                 out_type = OutTypeLib;
+            } else if (strcmp(arg, "doc") == 0) {
+                cmd = CmdDoc;
             } else if (strcmp(arg, "help") == 0) {
                 cmd = CmdHelp;
             } else if (strcmp(arg, "run") == 0) {
@@ -727,6 +733,7 @@ int main(int argc, char **argv) {
         } else {
             switch (cmd) {
                 case CmdBuild:
+                case CmdDoc:
                 case CmdRun:
                 case CmdTranslateC:
                 case CmdTest:
@@ -796,6 +803,34 @@ int main(int argc, char **argv) {
             fprintf(stderr, "unable to write to stdout: %s\n", strerror(ferror(stdout)));
             return EXIT_FAILURE;
         }
+        return EXIT_SUCCESS;
+    }
+    case CmdDoc: {
+        if (!in_file) {
+            fprintf(stderr, "Expected source file argument.\n");
+            return print_error_usage(arg0);
+        }
+
+        Buf *root_filename = buf_create_from_str(in_file);
+        Buf root_filename_abs = os_path_resolve(&root_filename, 1);
+        Buf *abspath = &root_filename_abs;
+
+        CodeGen *g = codegen_create(abspath, target, OutTypeExe, BuildModeDebug, get_zig_lib_dir());
+        g->verbose_tokenize = verbose_tokenize;
+        g->verbose_ast = verbose_ast;
+        g->verbose_ir = verbose_ir;
+        g->enable_time_report = timing_info;
+        buf_init_from_str(&g->cache_dir, cache_dir ? cache_dir : default_zig_cache_name);
+
+        if (out_name == nullptr)
+            out_name = "doc";
+
+        Buf *dir = buf_alloc();
+        Buf *src = buf_alloc();
+        os_path_split(abspath, dir, src);
+
+        doc_generate(g, buf_create_from_str(out_name), dir, src);
+
         return EXIT_SUCCESS;
     }
     case CmdRun:

@@ -99,6 +99,7 @@ enum TokenId {
     TokenIdKeywordWhile,
     TokenIdLBrace,
     TokenIdLBracket,
+    TokenIdLineComment,
     TokenIdLParen,
     TokenIdQuestion,
     TokenIdMinusEq,
@@ -149,6 +150,11 @@ struct TokenCharLit {
     uint8_t c;
 };
 
+struct TokenLineComment {
+    Buf str; // includes leading slashes
+    bool has_extra_newline;
+};
+
 struct Token {
     TokenId id;
     size_t start_pos;
@@ -168,6 +174,9 @@ struct Token {
 
         // TokenIdCharLiteral
         TokenCharLit char_lit;
+
+        // TokenIdLineComment
+        TokenLineComment line_comment;
     } data;
 };
 // work around conflicting name Token which is also found in libclang

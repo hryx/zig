@@ -991,7 +991,7 @@ static LLVMValueRef get_write_register_fn_val(CodeGen *g) {
     // !0 = !{!"sp\00"}
 
     LLVMTypeRef param_types[] = {
-        LLVMMetadataTypeInContext(LLVMGetGlobalContext()), 
+        LLVMMetadataTypeInContext(LLVMGetGlobalContext()),
         LLVMIntType(g->pointer_size_bytes * 8),
     };
 
@@ -3463,7 +3463,7 @@ static LLVMValueRef ir_render_call(CodeGen *g, IrExecutable *executable, IrInstr
     }
     FnWalk fn_walk = {};
     fn_walk.id = FnWalkIdCall;
-    fn_walk.data.call.inst = instruction; 
+    fn_walk.data.call.inst = instruction;
     fn_walk.data.call.is_var_args = is_var_args;
     fn_walk.data.call.gen_param_values = &gen_param_values;
     walk_function_params(g, fn_type, &fn_walk);
@@ -3483,7 +3483,7 @@ static LLVMValueRef ir_render_call(CodeGen *g, IrExecutable *executable, IrInstr
 
     LLVMCallConv llvm_cc = get_llvm_cc(g, cc);
     LLVMValueRef result;
-    
+
     if (instruction->new_stack == nullptr) {
         result = ZigLLVMBuildCall(g->builder, fn_val,
                 gen_param_values.items, (unsigned)gen_param_values.length, llvm_cc, fn_inline, "");
@@ -3951,7 +3951,7 @@ static LLVMValueRef get_enum_tag_name_function(CodeGen *g, ZigType *enum_type) {
 
     LLVMTypeRef fn_type_ref = LLVMFunctionType(LLVMPointerType(u8_slice_type->type_ref, 0),
             &tag_int_type->type_ref, 1, false);
-    
+
     Buf *fn_name = get_mangled_name(g, buf_sprintf("__zig_tag_name_%s", buf_ptr(&enum_type->name)), false);
     LLVMValueRef fn_val = LLVMAddFunction(g->module, buf_ptr(fn_name), fn_type_ref);
     LLVMSetLinkage(fn_val, LLVMInternalLinkage);
@@ -6368,7 +6368,7 @@ static void do_code_gen(CodeGen *g) {
         ir_render(g, fn_table_entry);
 
     }
-    
+
     assert(!g->errors.length);
 
     if (buf_len(&g->global_asm) != 0) {
@@ -7093,7 +7093,7 @@ Buf *codegen_generate_builtin_source(CodeGen *g) {
         assert(ContainerLayoutAuto == 0);
         assert(ContainerLayoutExtern == 1);
         assert(ContainerLayoutPacked == 2);
-    
+
         assert(CallingConventionUnspecified == 0);
         assert(CallingConventionC == 1);
         assert(CallingConventionCold == 2);
@@ -8168,8 +8168,7 @@ static void resolve_out_paths(CodeGen *g) {
     }
 }
 
-
-void codegen_build_and_link(CodeGen *g) {
+static void codegen_analyze(CodeGen *g, bool build) {
     Error err;
     assert(g->out_type != OutTypeUnknown);
 
@@ -8220,17 +8219,19 @@ void codegen_build_and_link(CodeGen *g) {
         }
         resolve_out_paths(g);
 
-        codegen_add_time_event(g, "Code Generation");
-        do_code_gen(g);
-        codegen_add_time_event(g, "LLVM Emit Output");
-        zig_llvm_emit_output(g);
+        if (build) {
+            codegen_add_time_event(g, "Code Generation");
+            do_code_gen(g);
+            codegen_add_time_event(g, "LLVM Emit Output");
+            zig_llvm_emit_output(g);
 
-        if (g->out_h_path != nullptr) {
-            codegen_add_time_event(g, "Generate .h");
-            gen_h_file(g);
-        }
-        if (g->out_type != OutTypeObj && g->emit_file_type == EmitFileTypeBinary) {
-            codegen_link(g);
+            if (g->out_h_path != nullptr) {
+                codegen_add_time_event(g, "Generate .h");
+                gen_h_file(g);
+            }
+            if (g->out_type != OutTypeObj && g->emit_file_type == EmitFileTypeBinary) {
+                codegen_link(g);
+            }
         }
     }
 
@@ -8238,6 +8239,14 @@ void codegen_build_and_link(CodeGen *g) {
         cache_release(&g->cache_hash);
     }
     codegen_add_time_event(g, "Done");
+}
+
+void codegen_build_and_link(CodeGen *g) {
+    codegen_analyze(g, true);
+}
+
+void codegen_analyze_only(CodeGen *g) {
+    codegen_analyze(g, false);
 }
 
 PackageTableEntry *codegen_create_package(CodeGen *g, const char *root_src_dir, const char *root_src_path) {

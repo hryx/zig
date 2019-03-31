@@ -76,11 +76,28 @@ struct ZigList {
         capacity = better_capacity;
     }
 
+    // naive lexicographical sorting
+    void sort(bool (*a_comes_before_b)(T &a, T &b)) {
+        if (length < 2) {
+            return;
+        }
+        bool changed = false;
+        do {
+            changed = false;
+            for (size_t i = 0; i < length - 1; i++) {
+                if (!a_comes_before_b(items[i], items[i + 1])) {
+                    T tmp = items[i];
+                    items[i] = items[i + 1];
+                    items[i + 1] = tmp;
+                    changed = true;
+                }
+            }
+        } while (changed);
+    }
+
     T *items;
     size_t length;
     size_t capacity;
 };
 
 #endif
-
-

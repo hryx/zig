@@ -2360,7 +2360,7 @@ static IrInstruction *ir_build_type_info(IrBuilder *irb, Scope *scope, AstNode *
 
     ir_ref_instruction(type_value, irb->current_basic_block);
 
-    return &instruction->base;    
+    return &instruction->base;
 }
 
 static IrInstruction *ir_build_type_id(IrBuilder *irb, Scope *scope, AstNode *source_node,
@@ -3058,7 +3058,7 @@ static ZigVar *create_local_var(CodeGen *codegen, AstNode *node, Scope *parent_s
                     Tld *tld = find_decl(codegen, parent_scope, name);
                     if (tld != nullptr) {
                         ErrorMsg *msg = add_node_error(codegen, node,
-                                buf_sprintf("redefinition of '%s'", buf_ptr(name)));
+                                buf_sprintf("create_local_var redefinition of '%s'", buf_ptr(name)));
                         add_error_note(codegen, msg, tld->source_node, buf_sprintf("previous definition is here"));
                         variable_entry->value->type = codegen->builtin_types.entry_invalid;
                     }
@@ -6506,7 +6506,7 @@ static IrInstruction *ir_gen_cancel_target(IrBuilder *irb, Scope *scope, AstNode
             atomic_state_field_name);
 
     // set the is_canceled bit
-    IrInstruction *prev_atomic_value = ir_build_atomic_rmw(irb, scope, node, 
+    IrInstruction *prev_atomic_value = ir_build_atomic_rmw(irb, scope, node,
             usize_type_val, atomic_state_ptr, nullptr, is_canceled_mask, nullptr,
             AtomicRmwOp_or, AtomicOrderSeqCst);
 
@@ -6584,7 +6584,7 @@ static IrInstruction *ir_gen_resume_target(IrBuilder *irb, Scope *scope, AstNode
             atomic_state_field_name);
 
     // clear the is_suspended bit
-    IrInstruction *prev_atomic_value = ir_build_atomic_rmw(irb, scope, node, 
+    IrInstruction *prev_atomic_value = ir_build_atomic_rmw(irb, scope, node,
             usize_type_val, atomic_state_ptr, nullptr, and_mask, nullptr,
             AtomicRmwOp_and, AtomicOrderSeqCst);
 
@@ -6700,7 +6700,7 @@ static IrInstruction *ir_gen_await_expr(IrBuilder *irb, Scope *scope, AstNode *n
 
     IrInstruction *coro_handle_addr = ir_build_ptr_to_int(irb, scope, node, irb->exec->coro_handle);
     IrInstruction *mask_bits = ir_build_bin_op(irb, scope, node, IrBinOpBinOr, coro_handle_addr, await_mask, false);
-    IrInstruction *prev_atomic_value = ir_build_atomic_rmw(irb, scope, node, 
+    IrInstruction *prev_atomic_value = ir_build_atomic_rmw(irb, scope, node,
             usize_type_val, atomic_state_ptr, nullptr, mask_bits, nullptr,
             AtomicRmwOp_or, AtomicOrderSeqCst);
 
@@ -6743,7 +6743,7 @@ static IrInstruction *ir_gen_await_expr(IrBuilder *irb, Scope *scope, AstNode *n
 
 
     ir_set_cursor_at_end_and_append_block(irb, yes_suspend_block);
-    IrInstruction *my_prev_atomic_value = ir_build_atomic_rmw(irb, scope, node, 
+    IrInstruction *my_prev_atomic_value = ir_build_atomic_rmw(irb, scope, node,
             usize_type_val, irb->exec->atomic_state_field_ptr, nullptr, is_suspended_mask, nullptr,
             AtomicRmwOp_or, AtomicOrderSeqCst);
     IrInstruction *my_is_suspended_value = ir_build_bin_op(irb, scope, node, IrBinOpBinAnd, my_prev_atomic_value, is_suspended_mask, false);
@@ -6775,7 +6775,7 @@ static IrInstruction *ir_gen_await_expr(IrBuilder *irb, Scope *scope, AstNode *n
 
     ir_set_cursor_at_end_and_append_block(irb, cleanup_block);
     IrInstruction *my_mask_bits = ir_build_bin_op(irb, scope, node, IrBinOpBinOr, ptr_mask, is_canceled_mask, false);
-    IrInstruction *b_my_prev_atomic_value = ir_build_atomic_rmw(irb, scope, node, 
+    IrInstruction *b_my_prev_atomic_value = ir_build_atomic_rmw(irb, scope, node,
             usize_type_val, irb->exec->atomic_state_field_ptr, nullptr, my_mask_bits, nullptr,
             AtomicRmwOp_or, AtomicOrderSeqCst);
     IrInstruction *my_await_handle_addr = ir_build_bin_op(irb, scope, node, IrBinOpBinAnd, b_my_prev_atomic_value, ptr_mask, false);
@@ -15909,7 +15909,7 @@ static IrInstruction *ir_analyze_instruction_switch_target(IrAnalyze *ira,
         pointee_val = ir_const_ptr_pointee(ira, &target_value_ptr->value, target_value_ptr->source_node);
         if (pointee_val == nullptr)
             return ira->codegen->invalid_instruction;
-            
+
         if (pointee_val->special == ConstValSpecialRuntime)
             pointee_val = nullptr;
     }
@@ -16673,7 +16673,7 @@ static IrInstruction *ir_analyze_instruction_field_parent_ptr(IrAnalyze *ira,
 static TypeStructField *validate_byte_offset(IrAnalyze *ira,
         IrInstruction *type_value,
         IrInstruction *field_name_value,
-        size_t *byte_offset) 
+        size_t *byte_offset)
 {
     ZigType *container_type = ir_resolve_type(ira, type_value);
     if (type_is_invalid(container_type))
@@ -16851,7 +16851,7 @@ static Error ir_make_type_info_defs(IrAnalyze *ira, ConstExprValue *out_val, Sco
 
     // Loop through the definitions and generate info.
     decl_it = decls_scope->decl_table.entry_iterator();
-    curr_entry = nullptr;    
+    curr_entry = nullptr;
     int definition_index = 0;
     while ((curr_entry = decl_it.next()) != nullptr) {
         // Skip comptime blocks and test functions.

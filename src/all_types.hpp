@@ -40,6 +40,7 @@ struct ZigWindowsSDK;
 struct Tld;
 struct TldExport;
 struct IrAnalyze;
+struct DocGen;
 
 enum X64CABIClass {
     X64CABIClass_Unknown,
@@ -387,6 +388,7 @@ struct TypeUnionField {
 };
 
 enum NodeType {
+    // 0
     NodeTypeFnProto,
     NodeTypeFnDef,
     NodeTypeParamDecl,
@@ -397,6 +399,8 @@ enum NodeType {
     NodeTypeVariableDeclaration,
     NodeTypeTestDecl,
     NodeTypeBinOpExpr,
+
+    // 10
     NodeTypeUnwrapErrorExpr,
     NodeTypeFloatLiteral,
     NodeTypeIntLiteral,
@@ -407,6 +411,8 @@ enum NodeType {
     NodeTypePointerType,
     NodeTypeFnCallExpr,
     NodeTypeArrayAccessExpr,
+
+    // 20
     NodeTypeSliceExpr,
     NodeTypeFieldAccessExpr,
     NodeTypePtrDeref,
@@ -417,6 +423,8 @@ enum NodeType {
     NodeTypeUndefinedLiteral,
     NodeTypeUnreachable,
     NodeTypeIfBoolExpr,
+
+    // 30
     NodeTypeWhileExpr,
     NodeTypeForExpr,
     NodeTypeSwitchExpr,
@@ -427,6 +435,8 @@ enum NodeType {
     NodeTypeContinue,
     NodeTypeAsmExpr,
     NodeTypeContainerDecl,
+
+    // 40
     NodeTypeStructField,
     NodeTypeContainerInitExpr,
     NodeTypeStructValueField,
@@ -437,6 +447,8 @@ enum NodeType {
     NodeTypeErrorSetDecl,
     NodeTypeCancel,
     NodeTypeResume,
+
+    // 50
     NodeTypeAwaitExpr,
     NodeTypeSuspend,
     NodeTypePromiseType,
@@ -477,6 +489,7 @@ struct AstNodeFnProto {
 struct AstNodeFnDef {
     AstNode *fn_proto;
     AstNode *body;
+    Buf *doc_comment;
 };
 
 struct AstNodeParamDecl {
@@ -529,6 +542,8 @@ struct AstNodeVariableDeclaration {
     AstNode *align_expr;
     // populated if the "section(S)" is present
     AstNode *section_expr;
+
+    Buf *doc_comment;
 };
 
 struct AstNodeTestDecl {
@@ -808,6 +823,7 @@ struct AstNodeContainerDecl {
     ContainerLayout layout;
     AstNode *init_arg_expr; // enum(T), struct(endianness), or union(T), or union(enum(T))
     bool auto_enum, is_root; // union(enum)
+    Buf *doc_comment; // only for root
 };
 
 struct AstNodeErrorSetDecl {
@@ -819,6 +835,7 @@ struct AstNodeStructField {
     Buf *name;
     AstNode *type;
     AstNode *value;
+    Buf *doc_comment;
 };
 
 struct AstNodeStringLiteral {
@@ -1181,6 +1198,7 @@ struct ZigTypePromise {
 };
 
 enum ZigTypeId {
+    // 0
     ZigTypeIdInvalid,
     ZigTypeIdMetaType,
     ZigTypeIdVoid,
@@ -1191,6 +1209,8 @@ enum ZigTypeId {
     ZigTypeIdPointer,
     ZigTypeIdArray,
     ZigTypeIdStruct,
+
+    // 10
     ZigTypeIdComptimeFloat,
     ZigTypeIdComptimeInt,
     ZigTypeIdUndefined,
@@ -1201,6 +1221,8 @@ enum ZigTypeId {
     ZigTypeIdEnum,
     ZigTypeIdUnion,
     ZigTypeIdFn,
+
+    // 20
     ZigTypeIdNamespace,
     ZigTypeIdBoundFn,
     ZigTypeIdArgTuple,

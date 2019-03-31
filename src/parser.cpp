@@ -194,7 +194,24 @@ static Token *peek_token_i(ParseContext *pc, size_t i) {
     return &pc->tokens->at(pc->current_token + i);
 }
 
+static void skip_comments(ParseContext *pc) {
+    Token *res = peek_token_i(pc, 0);
+    while (res->id == TokenIdLineComment) {
+        pc->current_token += 1;
+        res = peek_token_i(pc, 0);
+    }
+}
+
+static void skip_comments_reverse(ParseContext *pc) {
+    Token *res = peek_token_i(pc, 0);
+    while (res->id == TokenIdLineComment) {
+        pc->current_token -= 1;
+        res = peek_token_i(pc, 0);
+    }
+}
+
 static Token *peek_token(ParseContext *pc) {
+    skip_comments(pc);
     return peek_token_i(pc, 0);
 }
 
@@ -222,6 +239,7 @@ static Token *expect_token(ParseContext *pc, TokenId id) {
 
 static void put_back_token(ParseContext *pc) {
     pc->current_token -= 1;
+    skip_comments_reverse(pc);
 }
 
 static Buf *token_buf(Token *token) {
@@ -241,6 +259,38 @@ static AstNode *token_symbol(ParseContext *pc, Token *token) {
     AstNode *res = ast_create_node(pc, NodeTypeSymbol, token);
     res->data.symbol_expr.symbol = token_buf(token);
     return res;
+}
+
+static Buf* token_file_comment(ParseContext *pc) {
+    Token &tok = pc->tokens->at(0);
+    if (tok.id != TokenIdLineComment)
+        return nullptr;
+    return &tok.data.line_comment.str;
+}
+
+static Buf* token_doc_comment_find(ParseContext *pc) {
+    for (size_t index = pc->current_token; index > 0; index -= 1) {
+        Token &tok = pc->tokens->at(index - 1);
+        switch (tok.id) {
+            case TokenIdLineComment:
+                {
+                    TokenLineComment &lc = tok.data.line_comment;
+                    if (lc.has_extra_newline)
+                        return nullptr;
+                    return &lc.str;
+                }
+            case TokenIdKeywordConst:
+            case TokenIdKeywordVar:
+            case TokenIdKeywordPub:
+            case TokenIdKeywordExtern:
+            case TokenIdKeywordExport:
+                continue;
+            default:
+                return nullptr;
+        }
+    }
+
+    return nullptr;
 }
 
 // (Rule SEP)* Rule?
@@ -585,6 +635,7 @@ AstNode *ast_parse(Buf *buf, ZigList<Token> *tokens, ImportTableEntry *owner,
 static AstNode *ast_parse_root(ParseContext *pc) {
     Token *first = peek_token(pc);
     AstNodeContainerDecl members = ast_parse_container_members(pc);
+    skip_comments(pc);
     if (pc->current_token != pc->tokens->length - 1)
         ast_invalid_token_error(pc, peek_token(pc));
 
@@ -594,6 +645,7 @@ static AstNode *ast_parse_root(ParseContext *pc) {
     node->data.container_decl.layout = ContainerLayoutAuto;
     node->data.container_decl.kind = ContainerKindStruct;
     node->data.container_decl.is_root = true;
+    node->data.container_decl.doc_comment = token_file_comment(pc);
 
     return node;
 }
@@ -683,6 +735,7 @@ static AstNode *ast_parse_top_level_comptime(ParseContext *pc) {
 //      / (KEYWORD_export / KEYWORD_extern STRINGLITERAL?)? VarDecl
 //      / KEYWORD_use Expr SEMICOLON
 static AstNode *ast_parse_top_level_decl(ParseContext *pc, VisibMod visib_mod) {
+    Buf *doc_comment = token_doc_comment_find(pc);
     Token *first = eat_token_if(pc, TokenIdKeywordExport);
     if (first == nullptr)
         first = eat_token_if(pc, TokenIdKeywordExtern);
@@ -703,6 +756,9 @@ static AstNode *ast_parse_top_level_decl(ParseContext *pc, VisibMod visib_mod) {
                 var_decl->data.variable_declaration.is_extern = first->id == TokenIdKeywordExtern;
                 var_decl->data.variable_declaration.is_export = first->id == TokenIdKeywordExport;
                 var_decl->data.variable_declaration.lib_name = token_buf(lib_name);
+                if (visib_mod != VisibModPub)
+                    doc_comment = nullptr;
+                var_decl->data.variable_declaration.doc_comment = doc_comment;
                 return var_decl;
             }
         }
@@ -726,6 +782,9 @@ static AstNode *ast_parse_top_level_decl(ParseContext *pc, VisibMod visib_mod) {
                 res = ast_create_node_copy_line_info(pc, NodeTypeFnDef, fn_proto);
                 res->data.fn_def.fn_proto = fn_proto;
                 res->data.fn_def.body = body;
+                if (visib_mod != VisibModPub)
+                    doc_comment = nullptr;
+                    res->data.fn_def.doc_comment = doc_comment;
                 fn_proto->data.fn_proto.fn_def_node = res;
             }
 
@@ -739,6 +798,9 @@ static AstNode *ast_parse_top_level_decl(ParseContext *pc, VisibMod visib_mod) {
     if (var_decl != nullptr) {
         assert(var_decl->type == NodeTypeVariableDeclaration);
         var_decl->data.variable_declaration.visib_mod = visib_mod;
+        if (visib_mod != VisibModPub)
+            doc_comment = nullptr;
+            var_decl->data.variable_declaration.doc_comment = doc_comment;
         return var_decl;
     }
 
@@ -755,6 +817,9 @@ static AstNode *ast_parse_top_level_decl(ParseContext *pc, VisibMod visib_mod) {
             res = ast_create_node_copy_line_info(pc, NodeTypeFnDef, fn_proto);
             res->data.fn_def.fn_proto = fn_proto;
             res->data.fn_def.body = body;
+            if (visib_mod != VisibModPub)
+                doc_comment = nullptr;
+            res->data.fn_def.doc_comment = doc_comment;
             fn_proto->data.fn_proto.fn_def_node = res;
         }
 

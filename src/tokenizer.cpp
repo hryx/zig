@@ -203,6 +203,8 @@ enum TokenizeState {
     TokenizeStateSawBar,
     TokenizeStateSawBarBar,
     TokenizeStateLineComment,
+    TokenizeStateLineCommentEnd,
+    TokenizeStateLineCommentContinue,
     TokenizeStateLineString,
     TokenizeStateLineStringEnd,
     TokenizeStateLineStringContinue,
@@ -274,6 +276,10 @@ static void set_token_id(Tokenize *t, Token *token, TokenId id) {
         memset(&token->data.str_lit.str, 0, sizeof(Buf));
         buf_resize(&token->data.str_lit.str, 0);
         token->data.str_lit.is_c_str = false;
+    } else if (id == TokenIdLineComment) {
+        memset(&token->data.line_comment.str, 0, sizeof(Buf));
+        buf_resize(&token->data.line_comment.str, 0);
+        token->data.line_comment.has_extra_newline = false;
     }
 }
 
@@ -288,11 +294,6 @@ static void begin_token(Tokenize *t, TokenId id) {
     set_token_id(t, token, id);
 
     t->cur_tok = token;
-}
-
-static void cancel_token(Tokenize *t) {
-    t->tokens->pop();
-    t->cur_tok = nullptr;
 }
 
 static void end_float_token(Tokenize *t) {
@@ -946,8 +947,11 @@ void tokenize(Buf *buf, Tokenization *out) {
             case TokenizeStateSawSlash:
                 switch (c) {
                     case '/':
-                        cancel_token(&t);
+                        set_token_id(&t, t.cur_tok, TokenIdLineComment);
                         t.state = TokenizeStateLineComment;
+                        // Include two leading slashes
+                        buf_append_char(&t.cur_tok->data.line_comment.str, '/');
+                        buf_append_char(&t.cur_tok->data.line_comment.str, '/');
                         break;
                     case '=':
                         set_token_id(&t, t.cur_tok, TokenIdDivEq);
@@ -959,6 +963,50 @@ void tokenize(Buf *buf, Tokenization *out) {
                         end_token(&t);
                         t.state = TokenizeStateStart;
                         continue;
+                }
+                break;
+            case TokenizeStateLineComment:
+                switch (c) {
+                    case '\n':
+                        t.state = TokenizeStateLineCommentEnd;
+                        break;
+                    default:
+                        buf_append_char(&t.cur_tok->data.line_comment.str, c);
+                        break;
+                }
+                break;
+            case TokenizeStateLineCommentEnd:
+                switch (c) {
+                    case ' ':
+                        break;
+                    case '/':
+                        t.state = TokenizeStateLineCommentContinue;
+                        break;
+                    case '\n':
+                        t.cur_tok->data.line_comment.has_extra_newline = true;
+                        end_token(&t);
+                        t.state = TokenizeStateStart;
+                        break;
+                    default:
+                        t.pos -= 1;
+                        end_token(&t);
+                        t.state = TokenizeStateStart;
+                        continue;
+                }
+                break;
+            case TokenizeStateLineCommentContinue:
+                switch (c) {
+                    case '/':
+                        t.state = TokenizeStateLineComment;
+                        buf_append_char(&t.cur_tok->data.line_comment.str, '\n');
+                        buf_append_char(&t.cur_tok->data.line_comment.str, '/');
+                        buf_append_char(&t.cur_tok->data.line_comment.str, '/');
+                        break;
+                    default:
+                        t.pos -= 2;
+                        end_token(&t);
+                        t.state = TokenizeStateStart;
+                        break;
                 }
                 break;
             case TokenizeStateSawBackslash:
@@ -1027,16 +1075,6 @@ void tokenize(Buf *buf, Tokenization *out) {
                         break;
                     default:
                         invalid_char_error(&t, c);
-                        break;
-                }
-                break;
-            case TokenizeStateLineComment:
-                switch (c) {
-                    case '\n':
-                        t.state = TokenizeStateStart;
-                        break;
-                    default:
-                        // do nothing
                         break;
                 }
                 break;
@@ -1485,16 +1523,17 @@ void tokenize(Buf *buf, Tokenization *out) {
         case TokenizeStateLineStringEnd:
         case TokenizeStateSawBarBar:
         case TokenizeStateLBracket:
+        case TokenizeStateLineComment:
+        case TokenizeStateLineCommentEnd:
             end_token(&t);
             break;
         case TokenizeStateSawDotDot:
         case TokenizeStateSawBackslash:
         case TokenizeStateLineStringContinue:
         case TokenizeStateLineStringContinueC:
+        case TokenizeStateLineCommentContinue:
         case TokenizeStateLBracketStar:
             tokenize_error(&t, "unexpected EOF");
-            break;
-        case TokenizeStateLineComment:
             break;
     }
     if (t.state != TokenizeStateError) {
@@ -1599,6 +1638,7 @@ const char * token_name(TokenId id) {
         case TokenIdKeywordWhile: return "while";
         case TokenIdLBrace: return "{";
         case TokenIdLBracket: return "[";
+        case TokenIdLineComment: return "LineComment";
         case TokenIdLParen: return "(";
         case TokenIdQuestion: return "?";
         case TokenIdMinusEq: return "-=";

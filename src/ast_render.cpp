@@ -141,7 +141,7 @@ const char *container_string(ContainerKind kind) {
     zig_unreachable();
 }
 
-static const char *node_type_str(NodeType node_type) {
+const char *node_type_str(NodeType node_type) {
     switch (node_type) {
         case NodeTypeFnDef:
             return "FnDef";

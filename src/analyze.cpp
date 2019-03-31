@@ -3342,7 +3342,7 @@ static void add_top_level_decl(CodeGen *g, ScopeDecls *decls_scope, Tld *tld) {
         auto entry = decls_scope->decl_table.put_unique(tld->name, tld);
         if (entry) {
             Tld *other_tld = entry->value;
-            ErrorMsg *msg = add_node_error(g, tld->source_node, buf_sprintf("redefinition of '%s'", buf_ptr(tld->name)));
+            ErrorMsg *msg = add_node_error(g, tld->source_node, buf_sprintf("add_top_level_decl redefinition of '%s'", buf_ptr(tld->name)));
             add_error_note(g, msg, other_tld->source_node, buf_sprintf("previous definition is here"));
             return;
         }
@@ -3611,7 +3611,7 @@ ZigVar *add_variable(CodeGen *g, AstNode *source_node, Scope *parent_scope, Buf 
                     Tld *tld = find_decl(g, search_scope, name);
                     if (tld != nullptr) {
                         ErrorMsg *msg = add_node_error(g, source_node,
-                                buf_sprintf("redefinition of '%s'", buf_ptr(name)));
+                                buf_sprintf("add_variable redefinition of '%s'", buf_ptr(name)));
                         add_error_note(g, msg, tld->source_node, buf_sprintf("previous definition is here"));
                         variable_entry->value->type = g->builtin_types.entry_invalid;
                     }
