@@ -30,7 +30,6 @@ pub fn parse(allocator: *Allocator, source: []const u8) !Tree {
         .root_node = undefined,
         .tokens = token_list,
         .errors = Tree.ErrorList.init(arena),
-        // TODO: Remove (not used/needed anywhere)
         .arena_allocator = tree_arena,
     };
 
