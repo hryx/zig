@@ -1887,7 +1887,39 @@ fn parseSwitchItem(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 //      / MINUSPERCENTEQUAL
 //      / EQUAL
 fn parseAssignOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
-    return error.NotImplemented; // TODO
+    const token = nextNonCommentToken(it);
+
+    const Op = Node.InfixOp.Op;
+    const op = switch (token.ptr.id) {
+        .AsteriskEqual => Op{ .AssignTimes = {} },
+        .SlashEqual => Op{ .AssignDiv = {} },
+        .PercentEqual => Op{ .AssignMod = {} },
+        .PlusEqual => Op{ .AssignPlus = {} },
+        .MinusEqual => Op{ .AssignMinus = {} },
+        .AngleBracketAngleBracketLeftEqual => Op{ .AssignBitShiftLeft = {} },
+        .AngleBracketAngleBracketRightEqual => Op{ .AssignBitShiftRight = {} },
+        .AmpersandEqual => Op{ .AssignBitAnd = {} },
+        .CaretEqual => Op{ .AssignBitXor = {} },
+        .PipeEqual => Op{ .AssignBitOr = {} },
+        .AsteriskPercentEqual => Op{ .AssignTimesWarp = {} },
+        .PlusPercentEqual => Op{ .AssignPlusWrap = {} },
+        .MinusPercentEqual => Op{ .AssignMinusWrap = {} },
+        .Equal => Op{ .Assign = {} },
+        else => {
+            rewindTokenIterator(it);
+            return null;
+        },
+    };
+
+    const node = try arena.create(Node.InfixOp);
+    node.* = Node.InfixOp{
+        .base = Node{ .id = .InfixOp },
+        .op_token = token.index,
+        .lhs = undefined, // set by caller
+        .op = op,
+        .rhs = undefined, // set by caller
+    };
+    return &node.base;
 }
 
 // CompareOp
