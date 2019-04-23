@@ -49,7 +49,11 @@ fn parseRoot(arena: *Allocator, it: *TokenIterator, tree: *Tree) !*Node.Root {
         .eof_token = undefined,
     };
     node.decls = (try parseContainerMembers(arena, it, tree, .Keyword_struct)) orelse return node;
-    node.eof_token = eatToken(it, .Eof) orelse unreachable;
+    node.eof_token = eatToken(it, .Eof) orelse {
+        // TODO: assert() with a message would be nice (show expected vs. actual)
+        std.debug.warn("expected EOF, got {}\n", it.peek().?.id);
+        unreachable;
+    };
     return node;
 }
 
@@ -2049,8 +2053,8 @@ fn parsePrefixOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 // PrefixTypeOp
 //     <- QUESTIONMARK
 //      / KEYWORD_promise MINUSRARROW
-//      / ArrayTypeStart (ByteAlign / KEYWORD_const / KEYWORD_volatile)*
-//      / PtrTypeStart (KEYWORD_align LPAREN Expr (COLON INTEGER COLON INTEGER)? RPAREN / KEYWORD_const / KEYWORD_volatile)*
+//      / ArrayTypeStart (ByteAlign / KEYWORD_const / KEYWORD_volatile / KEYWORD_allowzero)*
+//      / PtrTypeStart (KEYWORD_align LPAREN Expr (COLON INTEGER COLON INTEGER)? RPAREN / KEYWORD_const / KEYWORD_volatile / KEYWORD_allowzero)*
 fn parsePrefixTypeOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     if (eatToken(it, .QuestionMark)) |token| {
         const node = try arena.create(Node.PrefixOp);
@@ -2088,6 +2092,11 @@ fn parsePrefixTypeOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node
             }
 
             if (eatToken(it, .Keyword_volatile)) |volatile_token| {
+                // TODO
+                continue;
+            }
+
+            if (eatToken(it, .Keyword_allowzero)) |allowzero_token| {
                 // TODO
                 continue;
             }
@@ -2130,13 +2139,23 @@ fn parsePrefixTypeOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node
                 };
 
                 continue;
-            } else if (eatToken(it, .Keyword_const)) |const_token| ptr_info_value: {
+            }
+
+            if (eatToken(it, .Keyword_const)) |const_token| ptr_info_value: {
                 node.cast(Node.PrefixOp).?.op.PtrType.const_token = const_token;
                 continue;
-            } else if (eatToken(it, .Keyword_volatile)) |volatile_token| {
+            }
+
+            if (eatToken(it, .Keyword_volatile)) |volatile_token| {
                 node.cast(Node.PrefixOp).?.op.PtrType.volatile_token = volatile_token;
                 continue;
             }
+
+            if (eatToken(it, .Keyword_allowzero)) |allowzero_token| {
+                node.cast(Node.PrefixOp).?.op.PtrType.allowzero_token = allowzero_token;
+                continue;
+            }
+
             break;
         }
     }
