@@ -208,7 +208,7 @@ fn parseTopLevelDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree, vis: ?T
 
 // FnProto <- FnCC? KEYWORD_fn IDENTIFIER? LPAREN ParamDeclList RPAREN ByteAlign? LinkSection? EXCLAMATIONMARK? (KEYWORD_var / TypeExpr)
 fn parseFnProto(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
-    const cc_token = parseFnCC(arena, it, tree);
+    const cc = (try parseFnCC(arena, it, tree)) orelse return null; // null on parse error
     const fn_token = eatToken(it, .Keyword_fn) orelse return null;
     const name_token = eatToken(it, .Identifier);
     const lparen = (try expectToken(it, tree, .LParen)) orelse return null;
@@ -259,13 +259,20 @@ fn parseFnProto(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         .return_type = return_type,
         .var_args_token = undefined, // TODO ?TokenIndex
         .extern_export_inline_token = null,
-        .cc_token = cc_token,
+        .cc_token = null,
         .async_attr = null,
         .body_node = null,
         .lib_name = null,
         .align_expr = null,
         .section_expr = section_expr,
     };
+
+    switch (cc) {
+        .CC => |token| fn_proto_node.cc_token = token,
+        .Extern => |token| fn_proto_node.extern_export_inline_token = token,
+        .Async => |node| fn_proto_node.async_attr = node,
+        .None => {},
+    }
 
     return &fn_proto_node.base;
 }
@@ -1544,7 +1551,7 @@ fn parseLinkSection(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node 
     const expr_node = (try expectNode(arena, it, tree, parseExpr, Error{
         .ExpectedExpr = Error.ExpectedExpr{ .token = it.peek().?.start },
     })) orelse return null;
-    _ = try expectToken(it, tree, .RParen);
+    _ = (try expectToken(it, tree, .RParen)) orelse return null;
     return expr_node;
 }
 
@@ -1553,10 +1560,37 @@ fn parseLinkSection(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node 
 //      / KEYWORD_stdcallcc
 //      / KEYWORD_extern
 //      / KEYWORD_async (LARROW TypeExpr RARROW)?
-fn parseFnCC(arena: *Allocator, it: *TokenIterator, tree: *Tree) ?TokenIndex {
-    // TODO
-    return null;
+fn parseFnCC(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?FnCC {
+    if (eatToken(it, .Keyword_nakedcc)) |token| return FnCC{ .CC = token };
+    if (eatToken(it, .Keyword_stdcallcc)) |token| return FnCC{ .CC = token };
+    if (eatToken(it, .Keyword_extern)) |token| return FnCC{ .Extern = token };
+    if (eatToken(it, .Keyword_async)) |token| {
+        const node = try arena.create(Node.AsyncAttribute);
+        node.* = Node.AsyncAttribute{
+            .base = Node{ .id = .AsyncAttribute },
+            .async_token = token,
+            .allocator_type = null,
+            .rangle_bracket = null,
+        };
+        if (eatToken(it, .AngleBracketLeft)) |_| {
+            const type_expr = (try expectNode(arena, it, tree, parseTypeExpr, Error{
+                .ExpectedTypeExpr = Error.ExpectedTypeExpr{ .token = it.peek().?.start },
+            })) orelse return null;
+            const rarrow = (try expectToken(it, tree, .AngleBracketRight)) orelse return null;
+            node.allocator_type = type_expr;
+            node.rangle_bracket = rarrow;
+        }
+        return FnCC{ .Async = node };
+    }
+    return FnCC{ .None = {} };
 }
+
+const FnCC = union(enum) {
+    CC: TokenIndex,
+    Extern: TokenIndex,
+    Async: *Node.AsyncAttribute,
+    None,
+};
 
 // ParamDecl <- (KEYWORD_noalias / KEYWORD_comptime)? (IDENTIFIER COLON)? ParamType
 fn parseParamDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
