@@ -1679,16 +1679,29 @@ fn parseIfPrefix(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 // WhilePrefix <- KEYWORD_while LPAREN Expr RPAREN PtrPayload? WhileContinueExpr?
 fn parseWhilePrefix(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const while_token = eatToken(it, .Keyword_while) orelse return null;
-    _ = (try expectToken(it, tree, .LParen)) orelse return null;
-    const expr = (try expectNode(arena, it, tree, parseExpr, Error{
-        .ExpectedExpr = Error.ExpectedExpr{ .token = it.peek().?.start },
-    }));
-    _ = (try expectToken(it, tree, .RParen)) orelse return null;
-    const ptr_payload = try parsePtrPayload(arena, it, tree);
-    const while_continue_expr = try parseWhileContinueExpr(arena, it, tree);
-    // TODO
 
-    return error.NotImplemented; // TODO
+    _ = (try expectToken(it, tree, .LParen)) orelse return null;
+    const condition = (try expectNode(arena, it, tree, parseExpr, Error{
+        .ExpectedExpr = Error.ExpectedExpr{ .token = it.peek().?.start },
+    })) orelse return null;
+    _ = (try expectToken(it, tree, .RParen)) orelse return null;
+
+    const payload = try parsePtrPayload(arena, it, tree);
+    const continue_expr = try parseWhileContinueExpr(arena, it, tree);
+
+    const node = try arena.create(Node.While);
+    node.* = Node.While{
+        .base = Node{ .id = .While },
+        .label = null,
+        .inline_token = null,
+        .while_token = while_token,
+        .condition = condition,
+        .payload = payload,
+        .continue_expr = continue_expr,
+        .body = undefined, // set by caller
+        .@"else" = null,
+    };
+    return &node.base;
 }
 
 // ForPrefix <- KEYWORD_for LPAREN Expr RPAREN PtrIndexPayload
