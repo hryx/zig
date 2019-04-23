@@ -1800,19 +1800,72 @@ fn parsePtrIndexPayload(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*N
 
 // SwitchProng <- SwitchCase EQUALRARROW PtrPayload? AssignExpr
 fn parseSwitchProng(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
-    return error.NotImplemented; // TODO
+    const node = (try parseSwitchCase(arena, it, tree)) orelse return null;
+    const arrow = (try expectToken(it, tree, .EqualAngleBracketRight)) orelse return null;
+    const payload = try parsePtrPayload(arena, it, tree);
+    const expr = (try expectNode(arena, it, tree, parseAssignExpr, Error{
+        .ExpectedExprOrAssignment = Error.ExpectedExprOrAssignment{ .token = it.peek().?.start },
+    })) orelse return null;
+
+    const switch_case = node.cast(Node.SwitchCase).?;
+    switch_case.arrow_token = arrow;
+    switch_case.payload = payload;
+    switch_case.expr = expr;
+
+    return node;
 }
 
 // SwitchCase
 //     <- SwitchItem (COMMA SwitchItem)* COMMA?
 //      / KEYWORD_else
 fn parseSwitchCase(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
-    return error.NotImplemented; // TODO
+    var list = Node.SwitchCase.ItemList.init(arena);
+
+    if (try parseSwitchItem(arena, it, tree)) |first_item| {
+        try list.push(first_item);
+        while (eatToken(it, .Comma) != null) {
+            const next_item = (try parseSwitchItem(arena, it, tree)) orelse break;
+            try list.push(next_item);
+        }
+    } else if (eatToken(it, .Keyword_else)) |else_token| {
+        const else_node = try arena.create(Node.SwitchElse);
+        else_node.* = Node.SwitchElse{
+            .base = Node{ .id = .SwitchElse },
+            .token = else_token,
+        };
+        try list.push(&else_node.base);
+    } else return null;
+
+    const node = try arena.create(Node.SwitchCase);
+    node.* = Node.SwitchCase{
+        .base = Node{ .id = .SwitchCase },
+        .items = list,
+        .arrow_token = undefined, // set by caller
+        .payload = null,
+        .expr = undefined, // set by caller
+    };
+    return &node.base;
 }
 
 // SwitchItem <- Expr (DOT3 Expr)?
 fn parseSwitchItem(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
-    return error.NotImplemented; // TODO
+    const expr = (try parseExpr(arena, it, tree)) orelse return null;
+    if (eatToken(it, .Ellipsis3)) |token| {
+        const range_end = (try expectNode(arena, it, tree, parseExpr, Error{
+            .ExpectedExpr = Error.ExpectedExpr{ .token = it.peek().?.start },
+        })) orelse return null;
+
+        const node = try arena.create(Node.InfixOp);
+        node.* = Node.InfixOp{
+            .base = Node{ .id = .InfixOp },
+            .op_token = token,
+            .lhs = expr,
+            .op = Node.InfixOp.Op{ .Range = {} },
+            .rhs = range_end,
+        };
+        return &node.base;
+    }
+    return expr;
 }
 
 // AssignOp
