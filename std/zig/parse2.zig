@@ -1735,17 +1735,67 @@ fn parseForPrefix(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 
 // Payload <- PIPE IDENTIFIER PIPE
 fn parsePayload(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
-    return error.NotImplemented; // TODO
+    const lpipe = eatToken(it, .Pipe) orelse return null;
+    const identifier = (try expectNode(arena, it, tree, parseIdentifier, Error{
+        .ExpectedIdentifier = Error.ExpectedIdentifier{ .token = it.peek().?.start },
+    })) orelse return null;
+    const rpipe = (try expectToken(it, tree, .Pipe)) orelse return null;
+
+    const node = try arena.create(Node.Payload);
+    node.* = Node.Payload{
+        .base = Node{ .id = .Payload },
+        .lpipe = lpipe,
+        .error_symbol = identifier,
+        .rpipe = rpipe,
+    };
+    return &node.base;
 }
 
 // PtrPayload <- PIPE ASTERISK? IDENTIFIER PIPE
 fn parsePtrPayload(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
-    return error.NotImplemented; // TODO
+    const lpipe = eatToken(it, .Pipe) orelse return null;
+    const asterisk = eatToken(it, .Asterisk);
+    const identifier = (try expectNode(arena, it, tree, parseIdentifier, Error{
+        .ExpectedIdentifier = Error.ExpectedIdentifier{ .token = it.peek().?.start },
+    })) orelse return null;
+    const rpipe = (try expectToken(it, tree, .Pipe)) orelse return null;
+
+    const node = try arena.create(Node.PointerPayload);
+    node.* = Node.PointerPayload{
+        .base = Node{ .id = .PointerPayload },
+        .lpipe = lpipe,
+        .ptr_token = asterisk,
+        .value_symbol = identifier,
+        .rpipe = rpipe,
+    };
+    return &node.base;
 }
 
 // PtrIndexPayload <- PIPE ASTERISK? IDENTIFIER (COMMA IDENTIFIER)? PIPE
 fn parsePtrIndexPayload(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
-    return error.NotImplemented; // TODO
+    const lpipe = eatToken(it, .Pipe) orelse return null;
+    const asterisk = eatToken(it, .Asterisk);
+    const index = blk: {
+        if (eatToken(it, .Asterisk) == null) break :blk null;
+        break :blk (try expectNode(arena, it, tree, parseIdentifier, Error{
+            .ExpectedIdentifier = Error.ExpectedIdentifier{ .token = it.peek().?.start },
+        })) orelse return null;
+    };
+    const identifier = (try expectNode(arena, it, tree, parseIdentifier, Error{
+        .ExpectedIdentifier = Error.ExpectedIdentifier{ .token = it.peek().?.start },
+    })) orelse return null;
+    const rpipe = (try expectToken(it, tree, .Pipe)) orelse return null;
+
+    const node = try arena.create(Node.PointerIndexPayload);
+    node.* = Node.PointerIndexPayload{
+        .base = Node{ .id = .PointerIndexPayload },
+        .lpipe = lpipe,
+        .ptr_token = asterisk,
+        .value_symbol = identifier,
+        .index_symbol = index,
+        .rpipe = rpipe,
+    };
+    return &node.base;
 }
 
 // SwitchProng <- SwitchCase EQUALRARROW PtrPayload? AssignExpr
