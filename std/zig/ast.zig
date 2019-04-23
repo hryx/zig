@@ -136,6 +136,7 @@ pub const Error = union(enum) {
     ExtraVolatileQualifier: ExtraVolatileQualifier,
     ExtraAllowZeroQualifier: ExtraAllowZeroQualifier,
     ExpectedTypeExpr: ExpectedTypeExpr,
+    ExpectedParamType: ExpectedParamType,
     ExpectedExpr: ExpectedExpr,
     ExpectedPrimaryExpr: ExpectedPrimaryExpr,
     ExpectedToken: ExpectedToken,
@@ -178,6 +179,7 @@ pub const Error = union(enum) {
             @TagType(Error).ExtraVolatileQualifier => |*x| return x.render(tokens, stream),
             @TagType(Error).ExtraAllowZeroQualifier => |*x| return x.render(tokens, stream),
             @TagType(Error).ExpectedTypeExpr => |*x| return x.render(tokens, stream),
+            @TagType(Error).ExpectedParamType => |*x| return x.render(tokens, stream),
             @TagType(Error).ExpectedExpr => |*x| return x.render(tokens, stream),
             @TagType(Error).ExpectedPrimaryExpr => |*x| return x.render(tokens, stream),
             @TagType(Error).ExpectedToken => |*x| return x.render(tokens, stream),
@@ -222,6 +224,7 @@ pub const Error = union(enum) {
             @TagType(Error).ExtraVolatileQualifier => |x| return x.token,
             @TagType(Error).ExtraAllowZeroQualifier => |x| return x.token,
             @TagType(Error).ExpectedTypeExpr => |x| return x.token,
+            @TagType(Error).ExpectedParamType => |x| return x.token,
             @TagType(Error).ExpectedExpr => |x| return x.token,
             @TagType(Error).ExpectedPrimaryExpr => |x| return x.token,
             @TagType(Error).ExpectedToken => |x| return x.token,
@@ -264,6 +267,7 @@ pub const Error = union(enum) {
     pub const ExpectedLoopExpr = SingleTokenError("Expected loop expression, found {}");
     pub const ExpectedDerefOrUnwrap = SingleTokenError("Expected pointer dereference or optional unwrap, found {}");
 
+    pub const ExpectedParamType = SimpleError("Expected parameter type'");
     pub const ExpectedPubItem = SimpleError("Pub must be followed by fn decl, var decl, or container member");
     pub const UnattachedDocComment = SimpleError("Unattached documentation comment");
     pub const ExtraAlignQualifier = SimpleError("Extra align qualifier");

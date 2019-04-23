@@ -50,12 +50,7 @@ fn parseRoot(arena: *Allocator, it: *TokenIterator, tree: *Tree) !*Node.Root {
         .eof_token = undefined,
     };
     node.decls = (try parseContainerMembers(arena, it, tree, .Keyword_struct)) orelse return node;
-    node.eof_token = eatToken(it, .Eof) orelse blk: {
-        try tree.errors.push(Error{
-            .InvalidToken = Error.InvalidToken{ .token = it.peek().?.start },
-        });
-        break :blk 0;
-    };
+    node.eof_token = eatToken(it, .Eof) orelse unreachable;
     return node;
 }
 
@@ -1594,16 +1589,70 @@ const FnCC = union(enum) {
 
 // ParamDecl <- (KEYWORD_noalias / KEYWORD_comptime)? (IDENTIFIER COLON)? ParamType
 fn parseParamDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
-    return error.NotImplemented; // TODO
+    const noalias_token = eatToken(it, .Keyword_noalias);
+    const comptime_token = if (noalias_token == null) eatToken(it, .Keyword_comptime) else null;
+    const name_token = blk: {
+        const identifier = eatToken(it, .Identifier) orelse break :blk null;
+        if (eatToken(it, .Colon) != null) break :blk identifier;
+        _ = rewindTokenIterator(it); // ParamType may also be an identifier
+        break :blk null;
+    };
+    const param_type = (try parseParamType(arena, it, tree)) orelse return null;
+
+    switch (param_type) {
+        .None => {
+            if (name_token != null)
+                try tree.errors.push(Error{
+                    .ExpectedParamType = Error.ExpectedParamType{ .token = it.peek().?.start },
+                });
+            return null;
+        },
+        else => {},
+    }
+
+    const param_decl = try arena.create(Node.ParamDecl);
+    param_decl.* = Node.ParamDecl{
+        .base = Node{ .id = .ParamDecl },
+        .doc_comments = null,
+        .comptime_token = comptime_token,
+        .noalias_token = noalias_token,
+        .name_token = name_token,
+        .type_node = undefined, // TODO: ok that this remains undefined when ... is found?
+        .var_args_token = null,
+    };
+    switch (param_type) {
+        .VarType => |node| param_decl.type_node = node,
+        .TypeExpr => |node| param_decl.type_node = node,
+        .VarArgs => |token| param_decl.var_args_token = token,
+        else => unreachable,
+    }
+    return &param_decl.base;
 }
 
 // ParamType
 //     <- KEYWORD_var
 //      / DOT3
 //      / TypeExpr
-fn parseParamType(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
-    return error.NotImplemented; // TODO
+fn parseParamType(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?ParamType {
+    if (eatToken(it, .Keyword_var)) |token| {
+        const node = try arena.create(Node.VarType);
+        node.* = Node.VarType{
+            .base = Node{ .id = .VarType },
+            .token = token,
+        };
+        return ParamType{ .VarType = &node.base };
+    }
+    if (eatToken(it, .Ellipsis3)) |token| return ParamType{ .VarArgs = token };
+    if (try parseTypeExpr(arena, it, tree)) |node| return ParamType{ .TypeExpr = node };
+    return null;
 }
+
+const ParamType = union(enum) {
+    VarType: *Node,
+    VarArgs: TokenIndex,
+    TypeExpr: *Node,
+    None,
+};
 
 // IfPrefix <- KEYWORD_if LPAREN Expr RPAREN PtrPayload?
 fn parseIfPrefix(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
