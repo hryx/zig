@@ -2201,49 +2201,73 @@ fn parsePrefixTypeOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node
 //      / DOTASTERISK
 //      / DOTQUESTIONMARK
 fn parseSuffixOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
-    if (eatToken(it, .LBracket)) |_| {
-        const expr_node = (try expectNode(arena, it, tree, parseExpr, Error{
-            .ExpectedExpr = Error.ExpectedExpr{ .token = it.peek().?.start },
-        })) orelse return null;
-        const dots = eatToken(it, .Ellipsis2);
-        const expr = if (dots) |_| try parseExpr(arena, it, tree) else null;
-        _ = (try expectToken(it, tree, .RBracket)) orelse return null;
-        return error.NotImplemented; // TODO
-    }
+    // TODO: This would be nicer with anonymous structs so that we could
+    // use a const instead of a var. The below would become:
+    // const op_and_token = blk: { ...
+    var rtoken: TokenIndex = undefined;
 
-    if (eatToken(it, .Period)) |_| {
-        const identifier = (try expectToken(it, tree, .Identifier)) orelse return null;
-        return error.NotImplemented; // TODO
-    }
+    const Op = Node.SuffixOp.Op;
+    const op = blk: {
+        if (eatToken(it, .LBracket)) |_| {
+            const index_expr = (try expectNode(arena, it, tree, parseExpr, Error{
+                .ExpectedExpr = Error.ExpectedExpr{ .token = it.peek().?.start },
+            })) orelse return null;
 
-    if (eatToken(it, .Period)) |period| {
-        if (eatToken(it, .Asterisk)) |asterisk| {
-            const node = try arena.create(Node.SuffixOp);
-            node.* = Node.SuffixOp{
-                .base = Node{ .id = .SuffixOp },
-                .lhs = undefined, // TODO
-                .op = Node.SuffixOp.Op.Deref,
-                .rtoken = undefined, // TODO
-            };
-            return &node.base;
+            if (eatToken(it, .Ellipsis2)) |dots| {
+                const end_expr = try parseExpr(arena, it, tree);
+                rtoken = (try expectToken(it, tree, .RBracket)) orelse return null;
+                break :blk Op{
+                    .Slice = Op.Slice{
+                        .start = index_expr,
+                        .end = end_expr,
+                    },
+                };
+            }
+
+            rtoken = (try expectToken(it, tree, .RBracket)) orelse return null;
+            break :blk Op{ .ArrayAccess = index_expr };
         }
-        if (eatToken(it, .QuestionMark)) |question_mark| {
-            const node = try arena.create(Node.SuffixOp);
-            node.* = Node.SuffixOp{
-                .base = Node{ .id = .SuffixOp },
-                .lhs = undefined, // TODO
-                .op = Node.SuffixOp.Op.UnwrapOptional,
-                .rtoken = undefined, // TODO
-            };
-            return &node.base;
+
+        if (eatToken(it, .Period)) |period| {
+            if (try parseIdentifier(arena, it, tree)) |identifier| {
+                // TODO: It's a bit weird to return an InfixOp from the SuffixOp parser.
+                // Should there be an ast.Node.SuffixOp.FieldAccess variant? Or should
+                // this grammar rule be altered?
+                const node = try arena.create(Node.InfixOp);
+                node.* = Node.InfixOp{
+                    .base = Node{ .id = .InfixOp },
+                    .op_token = period,
+                    .lhs = undefined, // set by caller
+                    .op = Node.InfixOp.Op.Period,
+                    .rhs = identifier,
+                };
+                return &node.base;
+            }
+            if (eatToken(it, .Asterisk)) |asterisk| {
+                rtoken = asterisk;
+                break :blk Op{ .Deref = {} };
+            }
+            if (eatToken(it, .QuestionMark)) |question_mark| {
+                rtoken = question_mark;
+                break :blk Op{ .UnwrapOptional = {} };
+            }
+            try tree.errors.push(Error{
+                .ExpectedSuffixOp = Error.ExpectedSuffixOp{ .token = it.peek().?.start },
+            });
+            return error.NotImplemented;
         }
-        try tree.errors.push(Error{
-            .ExpectedDerefOrUnwrap = Error.ExpectedDerefOrUnwrap{ .token = it.peek().?.start },
-        });
+
         return null;
-    }
+    };
 
-    return null;
+    const node = try arena.create(Node.SuffixOp);
+    node.* = Node.SuffixOp{
+        .base = Node{ .id = .SuffixOp },
+        .lhs = undefined, // set by caller
+        .op = op,
+        .rtoken = rtoken,
+    };
+    return &node.base;
 }
 
 // AsyncPrefix <- KEYWORD_async (LARROW PrefixExpr RARROW)?

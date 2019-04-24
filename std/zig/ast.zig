@@ -147,6 +147,7 @@ pub const Error = union(enum) {
     ExpectedPrefixExpr: ExpectedPrefixExpr, // TODO: lame
     ExpectedLoopExpr: ExpectedLoopExpr,
     ExpectedDerefOrUnwrap: ExpectedDerefOrUnwrap,
+    ExpectedSuffixOp: ExpectedSuffixOp,
 
     pub fn render(self: *const Error, tokens: *Tree.TokenList, stream: var) !void {
         switch (self.*) {
@@ -190,6 +191,7 @@ pub const Error = union(enum) {
             @TagType(Error).ExpectedPrefixExpr => |*x| return x.render(tokens, stream),
             @TagType(Error).ExpectedLoopExpr => |*x| return x.render(tokens, stream),
             @TagType(Error).ExpectedDerefOrUnwrap => |*x| return x.render(tokens, stream),
+            @TagType(Error).ExpectedSuffixOp => |*x| return x.render(tokens, stream),
         }
     }
 
@@ -235,6 +237,7 @@ pub const Error = union(enum) {
             @TagType(Error).ExpectedPrefixExpr => |x| return x.token,
             @TagType(Error).ExpectedLoopExpr => |x| return x.token,
             @TagType(Error).ExpectedDerefOrUnwrap => |x| return x.token,
+            @TagType(Error).ExpectedSuffixOp => |x| return x.token,
         }
     }
 
@@ -266,6 +269,7 @@ pub const Error = union(enum) {
     pub const ExpectedPrefixExpr = SingleTokenError("Expected prefix expression, found {}");
     pub const ExpectedLoopExpr = SingleTokenError("Expected loop expression, found {}");
     pub const ExpectedDerefOrUnwrap = SingleTokenError("Expected pointer dereference or optional unwrap, found {}");
+    pub const ExpectedSuffixOp = SingleTokenError("Expected pointer dereference, optional unwrap, or field access, found {}");
 
     pub const ExpectedParamType = SimpleError("Expected parameter type'");
     pub const ExpectedPubItem = SimpleError("Pub must be followed by fn decl, var decl, or container member");
