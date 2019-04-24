@@ -2254,7 +2254,7 @@ fn parseSuffixOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
             try tree.errors.push(Error{
                 .ExpectedSuffixOp = Error.ExpectedSuffixOp{ .token = it.peek().?.start },
             });
-            return error.NotImplemented;
+            return null;
         }
 
         return null;
