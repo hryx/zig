@@ -2732,7 +2732,7 @@ fn ListParser(comptime L: type, comptime nodeParseFn: var) type {
             var list = L.init(arena);
             while (try nodeParseFn(arena, it, tree)) |node| {
                 try list.push(node);
-                if (eatToken(it, .Colon) == null) break;
+                if (eatToken(it, .Comma) == null) break;
             }
             return list;
         }
