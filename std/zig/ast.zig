@@ -2190,6 +2190,7 @@ pub const Node = struct {
 
         pub const OutputList = SegmentedList(*AsmOutput, 2);
         pub const InputList = SegmentedList(*AsmInput, 2);
+        // TODO: To support multiline string literal, use a *Node instead of TokenIndex
         pub const ClobberList = SegmentedList(TokenIndex, 2);
 
         pub fn iterate(self: *Asm, index: usize) ?*Node {

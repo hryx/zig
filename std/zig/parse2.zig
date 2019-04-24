@@ -1436,20 +1436,21 @@ fn parseAsmExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const asm_token = eatToken(it, .Keyword_asm) orelse return null;
     const volatile_token = eatToken(it, .Keyword_volatile);
     _ = (try expectToken(it, tree, .LParen)) orelse return null;
-    const asm_output = try parseAsmOutput(arena, it, tree);
-    const rparen = (try expectToken(it, tree, .RParen)) orelse return null;
 
     const node = try arena.create(Node.Asm);
     node.* = Node.Asm{
         .base = Node{ .id = .Asm },
         .asm_token = asm_token,
         .volatile_token = volatile_token,
-        .template = undefined, //TODO
-        .outputs = undefined, // asm_output, // TODO
-        .inputs = undefined, // TODO
-        .clobbers = undefined, // TODO
-        .rparen = rparen,
+        .template = undefined, // TODO: what is this?
+        .outputs = undefined,
+        .inputs = undefined,
+        .clobbers = undefined,
+        .rparen = undefined,
     };
+
+    try parseAsmOutput(arena, it, tree, node);
+    node.rparen = (try expectToken(it, tree, .RParen)) orelse return null;
     return &node.base;
 }
 
@@ -1468,30 +1469,96 @@ fn parseEnumLiteral(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node 
 }
 
 // AsmOutput <- COLON AsmOutputList AsmInput?
-fn parseAsmOutput(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
-    return error.NotImplemented; // TODO
+fn parseAsmOutput(arena: *Allocator, it: *TokenIterator, tree: *Tree, asm_node: *Node.Asm) !void {
+    if (eatToken(it, .Colon) == null) return;
+    asm_node.outputs = try parseAsmOutputList(arena, it, tree);
+    try parseAsmInput(arena, it, tree, asm_node);
 }
 
 // AsmOutputItem <- LBRACKET IDENTIFIER RBRACKET STRINGLITERAL LPAREN (MINUSRARROW TypeExpr / IDENTIFIER) RPAREN
-fn parseAsmOutputItem(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
-    return error.NotImplemented; // TODO
+fn parseAsmOutputItem(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node.AsmOutput {
+    const lbracket = eatToken(it, .LBracket) orelse return null;
+    const name = (try expectNode(arena, it, tree, parseIdentifier, Error{
+        .ExpectedIdentifier = Error.ExpectedIdentifier{ .token = it.peek().?.start },
+    })) orelse return null;
+    _ = (try expectToken(it, tree, .RBracket)) orelse return null;
+
+    const constraint = (try expectNode(arena, it, tree, parseStringLiteral, Error{
+        .ExpectedStringLiteral = Error.ExpectedStringLiteral{ .token = it.peek().?.start },
+    })) orelse return null;
+
+    _ = (try expectToken(it, tree, .LParen)) orelse return null;
+    const kind = blk: {
+        if (eatToken(it, .Arrow) != null) {
+            const return_ident = (try expectNode(arena, it, tree, parseTypeExpr, Error{
+                .ExpectedTypeExpr = Error.ExpectedTypeExpr{ .token = it.peek().?.start },
+            })) orelse return null;
+            break :blk Node.AsmOutput.Kind{ .Return = return_ident };
+        }
+        const variable = (try expectNode(arena, it, tree, parseIdentifier, Error{
+            .ExpectedIdentifier = Error.ExpectedIdentifier{ .token = it.peek().?.start },
+        })) orelse return null;
+        break :blk Node.AsmOutput.Kind{ .Variable = variable.cast(Node.Identifier).? };
+    };
+    const rparen = (try expectToken(it, tree, .RParen)) orelse return null;
+
+    const node = try arena.create(Node.AsmOutput);
+    node.* = Node.AsmOutput{
+        .base = Node{ .id = .AsmOutput },
+        .lbracket = lbracket,
+        .symbolic_name = name,
+        .constraint = constraint,
+        .kind = kind,
+        .rparen = rparen,
+    };
+    return node;
 }
 
 // AsmInput <- COLON AsmInputList AsmClobbers?
-fn parseAsmInput(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
-    return error.NotImplemented; // TODO
+fn parseAsmInput(arena: *Allocator, it: *TokenIterator, tree: *Tree, asm_node: *Node.Asm) !void {
+    if (eatToken(it, .Colon) == null) return;
+    asm_node.inputs = try parseAsmInputList(arena, it, tree);
+    try parseAsmClobbers(arena, it, tree, asm_node);
 }
 
 // AsmInputItem <- LBRACKET IDENTIFIER RBRACKET STRINGLITERAL LPAREN Expr RPAREN
-fn parseAsmInputItem(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
-    return error.NotImplemented; // TODO
+fn parseAsmInputItem(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node.AsmInput {
+    const lbracket = eatToken(it, .LBracket) orelse return null;
+    const name = (try expectNode(arena, it, tree, parseIdentifier, Error{
+        .ExpectedIdentifier = Error.ExpectedIdentifier{ .token = it.peek().?.start },
+    })) orelse return null;
+    _ = (try expectToken(it, tree, .RBracket)) orelse return null;
+
+    const constraint = (try expectNode(arena, it, tree, parseStringLiteral, Error{
+        .ExpectedStringLiteral = Error.ExpectedStringLiteral{ .token = it.peek().?.start },
+    })) orelse return null;
+
+    _ = (try expectToken(it, tree, .LParen)) orelse return null;
+    const expr = (try expectNode(arena, it, tree, parseExpr, Error{
+        .ExpectedExpr = Error.ExpectedExpr{ .token = it.peek().?.start },
+    })) orelse return null;
+    const rparen = (try expectToken(it, tree, .RParen)) orelse return null;
+
+    const node = try arena.create(Node.AsmInput);
+    node.* = Node.AsmInput{
+        .base = Node{ .id = .AsmInput },
+        .lbracket = lbracket,
+        .symbolic_name = name,
+        .constraint = constraint,
+        .expr = expr,
+        .rparen = rparen,
+    };
+    return node;
 }
 
 // AsmClobbers <- COLON StringList
 // StringList <- (STRINGLITERAL COMMA)* STRINGLITERAL?
-fn parseAsmClobbers(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?Node.Asm.ClobberList {
-    _ = eatToken(it, .Colon) orelse return null;
-    return try ListParser(Node.Asm.ClobberList, parseStringLiteral).parse(arena, it, tree);
+fn parseAsmClobbers(arena: *Allocator, it: *TokenIterator, tree: *Tree, asm_node: *Node.Asm) !void {
+    if (eatToken(it, .Colon) == null) return;
+    asm_node.clobbers = try ListParser(
+        Node.Asm.ClobberList,
+        tokenParseFn(.StringLiteral).parse,
+    ).parse(arena, it, tree);
 }
 
 // BreakLabel <- COLON IDENTIFIER
@@ -2472,12 +2539,12 @@ fn parseSwitchProngList(arena: *Allocator, it: *TokenIterator, tree: *Tree) !Nod
 }
 
 // AsmOutputList <- (AsmOutputItem COMMA)* AsmOutputItem?
-fn parseAsmOutputList(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
+fn parseAsmOutputList(arena: *Allocator, it: *TokenIterator, tree: *Tree) !Node.Asm.OutputList {
     return try ListParser(Node.Asm.OutputList, parseAsmOutputItem).parse(arena, it, tree);
 }
 
 // AsmInputList <- (AsmInputItem COMMA)* AsmInputItem?
-fn parseAsmInputList(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
+fn parseAsmInputList(arena: *Allocator, it: *TokenIterator, tree: *Tree) !Node.Asm.InputList {
     return try ListParser(Node.Asm.InputList, parseAsmInputItem).parse(arena, it, tree);
 }
 
@@ -2735,6 +2802,17 @@ fn ListParser(comptime L: type, comptime nodeParseFn: var) type {
                 if (eatToken(it, .Comma) == null) break;
             }
             return list;
+        }
+    };
+}
+
+// Satisfies parseFn for ListParser, but returns a TokenIndex instead of a *Node.
+// NOTE: This is only needed for Asm.ClobberList, which should instead be a list of *Node anyway.
+fn tokenParseFn(token: Token.Id) type {
+    return struct {
+        const NoError = error{};
+        pub fn parse(arena: *Allocator, it: *TokenIterator, tree: *Tree) NoError!?TokenIndex {
+            return eatToken(it, token);
         }
     };
 }
