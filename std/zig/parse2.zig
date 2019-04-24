@@ -50,9 +50,10 @@ fn parseRoot(arena: *Allocator, it: *TokenIterator, tree: *Tree) !*Node.Root {
     };
     node.decls = (try parseContainerMembers(arena, it, tree, .Keyword_struct)) orelse return node;
     node.eof_token = eatToken(it, .Eof) orelse {
-        // TODO: assert() with a message would be nice (show expected vs. actual)
-        std.debug.warn("expected EOF, got {}\n", it.peek().?.id);
-        unreachable;
+        try tree.errors.push(Error{
+            .ExpectedContainerMembers = Error.ExpectedContainerMembers{ .token = it.peek().?.start },
+        });
+        return node;
     };
     return node;
 }
@@ -282,23 +283,19 @@ fn parseVarDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         return null;
 
     const name_token = (try expectToken(it, tree, .Identifier)) orelse return null;
-    const type_node = blk: {
-        if (eatToken(it, .Colon)) |_| {
-            break :blk (try expectNode(arena, it, tree, parseTypeExpr, Error{
-                .ExpectedTypeExpr = Error.ExpectedTypeExpr{ .token = it.peek().?.start },
-            })) orelse return null;
-        } else break :blk null;
-    };
+    const type_node = if (eatToken(it, .Colon) != null) blk: {
+        break :blk (try expectNode(arena, it, tree, parseTypeExpr, Error{
+            .ExpectedTypeExpr = Error.ExpectedTypeExpr{ .token = it.peek().?.start },
+        })) orelse return null;
+    } else null;
     const align_node = try parseByteAlign(arena, it, tree);
     const section_node = try parseLinkSection(arena, it, tree);
     const eq_token = eatToken(it, .Equal);
-    const init_node = blk: {
-        if (eq_token) |_| {
-            break :blk (try expectNode(arena, it, tree, parseExpr, Error{
-                .ExpectedExpr = Error.ExpectedExpr{ .token = it.peek().?.start },
-            })) orelse return null;
-        } else break :blk null;
-    };
+    const init_node = if (eq_token != null) blk: {
+        break :blk (try expectNode(arena, it, tree, parseExpr, Error{
+            .ExpectedExpr = Error.ExpectedExpr{ .token = it.peek().?.start },
+        })) orelse return null;
+    } else null;
     const semicolon_token = (try expectToken(it, tree, .Semicolon)) orelse return null;
 
     const node = try arena.create(Node.VarDecl);
@@ -319,7 +316,6 @@ fn parseVarDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         .init_node = init_node,
         .semicolon_token = semicolon_token,
     };
-
     return &node.base;
 }
 
