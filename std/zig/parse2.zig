@@ -2082,6 +2082,14 @@ fn parsePrefixOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 }
 
 // TODO: last choice allows for `*const volatile volatile const`, `*align(4) align(8) align(4)` etc.
+// TODO: ArrayTypeStart is either an array or a slice, but const/allowzero only work on
+//       pointers. (Note: does align(x) work for arrays as well as slices/pointers? Does volatile?)
+//       Maybe it would be better to have two separate rules?
+//       ...
+//       / ArrayTypeStart
+//       / SliceTypeStart (ByteAlign / KEYWORD_const / KEYWORD_volatile / KEYWORD_allowzero)*
+//       / PtrTypeStart ...
+
 // PrefixTypeOp
 //     <- QUESTIONMARK
 //      / KEYWORD_promise MINUSRARROW
@@ -2111,85 +2119,89 @@ fn parsePrefixTypeOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node
     }
 
     if (try parseArrayTypeStart(arena, it, tree)) |node| {
-        // TODO: Set node.rhs
-        while (true) {
-            if (try parseByteAlign(arena, it, tree)) |byte_align| {
-                // TODO
-                continue;
-            }
-
-            if (eatToken(it, .Keyword_const)) |const_token| {
-                // TODO
-                continue;
-            }
-
-            if (eatToken(it, .Keyword_volatile)) |volatile_token| {
-                // TODO
-                continue;
-            }
-
-            if (eatToken(it, .Keyword_allowzero)) |allowzero_token| {
-                // TODO
-                continue;
-            }
-
-            break;
+        switch (node.cast(Node.PrefixOp).?.op) {
+            .ArrayType => {},
+            .SliceType => |*slice_type| {
+                while (true) {
+                    if (try parseByteAlign(arena, it, tree)) |align_expr| {
+                        slice_type.align_info = Node.PrefixOp.PtrInfo.Align{
+                            .node = align_expr,
+                            .bit_range = null,
+                        };
+                        continue;
+                    }
+                    if (eatToken(it, .Keyword_const)) |const_token| {
+                        slice_type.const_token = const_token;
+                        continue;
+                    }
+                    if (eatToken(it, .Keyword_volatile)) |volatile_token| {
+                        slice_type.volatile_token = volatile_token;
+                        continue;
+                    }
+                    if (eatToken(it, .Keyword_allowzero)) |allowzero_token| {
+                        slice_type.allowzero_token = allowzero_token;
+                        continue;
+                    }
+                    break;
+                }
+            },
+            else => unreachable,
         }
-        // return null;
-        return error.NotImplemented;
+        return node;
     }
 
     if (try parsePtrTypeStart(arena, it, tree)) |node| {
-        while (true) {
-            // TODO: allowzero
-            if (eatToken(it, .Keyword_align)) |align_token| {
-                const lparen = (try expectToken(it, tree, .LParen)) orelse return null;
-                const expr_node = (try expectNode(arena, it, tree, parseExpr, Error{
-                    .ExpectedExpr = Error.ExpectedExpr{ .token = it.peek().?.start },
-                })) orelse return null;
+        switch (node.cast(Node.PrefixOp).?.op) {
+            .PtrType => |*ptr_type| {
+                while (true) {
+                    if (eatToken(it, .Keyword_align)) |align_token| {
+                        const lparen = (try expectToken(it, tree, .LParen)) orelse return null;
+                        const expr_node = (try expectNode(arena, it, tree, parseExpr, Error{
+                            .ExpectedExpr = Error.ExpectedExpr{ .token = it.peek().?.start },
+                        })) orelse return null;
 
-                // Optional bit range
-                const bit_range = if (eatToken(it, .Colon)) |_| bit_range_value: {
-                    const range_start = (try expectNode(arena, it, tree, parseIntegerLiteral, Error{
-                        .ExpectedIntegerLiteral = Error.ExpectedIntegerLiteral{ .token = it.peek().?.start },
-                    })) orelse return null;
-                    _ = (try expectToken(it, tree, .Colon)) orelse return null;
-                    const range_end = (try expectNode(arena, it, tree, parseIntegerLiteral, Error{
-                        .ExpectedIntegerLiteral = Error.ExpectedIntegerLiteral{ .token = it.peek().?.start },
-                    })) orelse return null;
+                        // Optional bit range
+                        const bit_range = if (eatToken(it, .Colon)) |_| bit_range_value: {
+                            const range_start = (try expectNode(arena, it, tree, parseIntegerLiteral, Error{
+                                .ExpectedIntegerLiteral = Error.ExpectedIntegerLiteral{ .token = it.peek().?.start },
+                            })) orelse return null;
+                            _ = (try expectToken(it, tree, .Colon)) orelse return null;
+                            const range_end = (try expectNode(arena, it, tree, parseIntegerLiteral, Error{
+                                .ExpectedIntegerLiteral = Error.ExpectedIntegerLiteral{ .token = it.peek().?.start },
+                            })) orelse return null;
 
-                    break :bit_range_value Node.PrefixOp.PtrInfo.Align.BitRange{
-                        .start = range_start,
-                        .end = range_end,
-                    };
-                } else null;
-                _ = (try expectToken(it, tree, .RParen)) orelse return null;
+                            break :bit_range_value Node.PrefixOp.PtrInfo.Align.BitRange{
+                                .start = range_start,
+                                .end = range_end,
+                            };
+                        } else null;
+                        _ = (try expectToken(it, tree, .RParen)) orelse return null;
 
-                node.cast(Node.PrefixOp).?.op.PtrType.align_info = Node.PrefixOp.PtrInfo.Align{
-                    .node = expr_node,
-                    .bit_range = bit_range,
-                };
+                        ptr_type.align_info = Node.PrefixOp.PtrInfo.Align{
+                            .node = expr_node,
+                            .bit_range = bit_range,
+                        };
 
-                continue;
-            }
-
-            if (eatToken(it, .Keyword_const)) |const_token| ptr_info_value: {
-                node.cast(Node.PrefixOp).?.op.PtrType.const_token = const_token;
-                continue;
-            }
-
-            if (eatToken(it, .Keyword_volatile)) |volatile_token| {
-                node.cast(Node.PrefixOp).?.op.PtrType.volatile_token = volatile_token;
-                continue;
-            }
-
-            if (eatToken(it, .Keyword_allowzero)) |allowzero_token| {
-                node.cast(Node.PrefixOp).?.op.PtrType.allowzero_token = allowzero_token;
-                continue;
-            }
-
-            break;
+                        continue;
+                    }
+                    if (eatToken(it, .Keyword_const)) |const_token| ptr_info_value: {
+                        ptr_type.const_token = const_token;
+                        continue;
+                    }
+                    if (eatToken(it, .Keyword_volatile)) |volatile_token| {
+                        ptr_type.volatile_token = volatile_token;
+                        continue;
+                    }
+                    if (eatToken(it, .Keyword_allowzero)) |allowzero_token| {
+                        ptr_type.allowzero_token = allowzero_token;
+                        continue;
+                    }
+                    break;
+                }
+            },
+            else => unreachable,
         }
+        return node;
     }
 
     return null;
@@ -2304,14 +2316,26 @@ fn parseFnCallArguments(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?No
 // ArrayTypeStart <- LBRACKET Expr? RBRACKET
 fn parseArrayTypeStart(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const lbracket = eatToken(it, .LBracket) orelse return null;
-    const expr = (try parseExpr(arena, it, tree)) orelse return null;
+    const expr = try parseExpr(arena, it, tree);
     const rbracket = (try expectToken(it, tree, .RBracket)) orelse return null;
+
+    const op = if (expr) |element_type|
+        Node.PrefixOp.Op{ .ArrayType = element_type }
+    else
+        Node.PrefixOp.Op{
+            .SliceType = Node.PrefixOp.PtrInfo{
+                .allowzero_token = null,
+                .align_info = null,
+                .const_token = null,
+                .volatile_token = null,
+            },
+        };
 
     const node = try arena.create(Node.PrefixOp);
     node.* = Node.PrefixOp{
         .base = Node{ .id = .PrefixOp },
         .op_token = lbracket,
-        .op = Node.PrefixOp.Op{ .ArrayType = expr },
+        .op = op,
         .rhs = undefined, // set by caller
     };
     return &node.base;
