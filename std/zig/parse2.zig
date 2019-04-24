@@ -212,7 +212,7 @@ fn parseFnProto(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const lparen = (try expectToken(it, tree, .LParen)) orelse return null;
     const params = try parseParamDeclList(arena, it, tree);
     const rparen = (try expectToken(it, tree, .RParen)) orelse return null;
-    const alignment_node = try parseByteAlign(arena, it, tree);
+    const align_expr = try parseByteAlign(arena, it, tree);
     const section_expr = try parseLinkSection(arena, it, tree);
     const exclamation_token = eatToken(it, .Bang);
 
@@ -261,7 +261,7 @@ fn parseFnProto(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         .async_attr = null,
         .body_node = null,
         .lib_name = null,
-        .align_expr = null,
+        .align_expr = align_expr,
         .section_expr = section_expr,
     };
 
@@ -2432,32 +2432,13 @@ fn parseContainerDeclType(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?
 
 // ByteAlign <- KEYWORD_align LPAREN Expr RPAREN
 fn parseByteAlign(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
-    const align_token = eatToken(it, .Keyword_align) orelse return null;
+    _ = eatToken(it, .Keyword_align) orelse return null;
     _ = (try expectToken(it, tree, .LParen)) orelse return null;
-    const align_expr = (try expectNode(arena, it, tree, parseExpr, Error{
+    const expr = (try expectNode(arena, it, tree, parseExpr, Error{
         .ExpectedExpr = Error.ExpectedExpr{ .token = it.peek().?.start },
     })) orelse return null;
     _ = (try expectToken(it, tree, .RParen)) orelse return null;
-
-    const node = try arena.create(Node.PrefixOp);
-    node.* = Node.PrefixOp{
-        .base = Node{ .id = .PrefixOp },
-        .op_token = align_token,
-        .op = Node.PrefixOp.Op{
-            .PtrType = Node.PrefixOp.PtrInfo{
-                .allowzero_token = null,
-                .align_info = Node.PrefixOp.PtrInfo.Align{
-                    .node = align_expr,
-                    .bit_range = null,
-                },
-                .const_token = null,
-                .volatile_token = null,
-            },
-        },
-        .rhs = undefined, // set by caller
-    };
-
-    return &node.base;
+    return expr;
 }
 
 // IdentifierList <- (IDENTIFIER COMMA)* IDENTIFIER?
