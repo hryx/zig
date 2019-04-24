@@ -304,21 +304,20 @@ fn parseVarDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const node = try arena.create(Node.VarDecl);
     node.* = Node.VarDecl{
         .base = Node{ .id = .VarDecl },
-        .mut_token = mut_token,
+        .doc_comments = null,
+        .visib_token = null,
+        .thread_local_token = null,
         .name_token = name_token,
         .eq_token = eq_token orelse 0,
+        .mut_token = mut_token,
+        .comptime_token = null,
+        .extern_export_token = null,
+        .lib_name = null,
         .type_node = type_node,
         .align_node = align_node,
         .section_node = section_node,
         .init_node = init_node,
         .semicolon_token = semicolon_token,
-        // set by caller
-        .doc_comments = null,
-        .visib_token = null,
-        .thread_local_token = null,
-        .comptime_token = null,
-        .extern_export_token = null,
-        .lib_name = null,
     };
 
     return &node.base;
