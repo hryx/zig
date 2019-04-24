@@ -688,7 +688,7 @@ fn parseBlockExprStatement(arena: *Allocator, it: *TokenIterator, tree: *Tree) !
 // BlockExpr <- BlockLabel? Block
 fn parseBlockExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) anyerror!?*Node {
     const label_token = parseBlockLabel(arena, it, tree) orelse return null;
-    const block_node = (parseBlock(arena, it, tree) catch return error.TodoFixRecursion) orelse return null;
+    const block_node = (try parseBlock(arena, it, tree)) orelse return null;
     block_node.cast(Node.Block).?.label = label_token;
     return block_node;
 }
