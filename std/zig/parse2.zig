@@ -112,13 +112,9 @@ fn parseTestDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const name_node = (try expectNode(arena, it, tree, parseStringLiteral, Error{
         .ExpectedStringLiteral = Error.ExpectedStringLiteral{ .token = it.peek().?.start },
     })) orelse return null;
-    const block_node = (try expectNode(
-        arena,
-        it,
-        tree,
-        parseBlock,
-        Error{ .ExpectedLBrace = Error.ExpectedLBrace{ .token = it.peek().?.start } },
-    )) orelse return null;
+    const block_node = (try expectNode(arena, it, tree, parseBlock, Error{
+        .ExpectedLBrace = Error.ExpectedLBrace{ .token = it.peek().?.start },
+    })) orelse return null;
 
     const test_node = try arena.create(Node.TestDecl);
     test_node.* = Node.TestDecl{
@@ -162,7 +158,7 @@ fn parseTopLevelDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree, vis: ?T
         const fn_node = node.cast(Node.FnProto).?;
 
         fn_node.*.visib_token = vis;
-        fn_node.*.extern_export_inline_token = export_token orelse extern_token orelse inline_token;
+        fn_node.*.extern_export_inline_token = extern_token orelse export_token orelse inline_token;
         fn_node.*.lib_name = lib_name;
 
         if (eatToken(it, .Semicolon)) |_| return node;
@@ -187,7 +183,7 @@ fn parseTopLevelDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree, vis: ?T
         var_decl.*.visib_token = vis;
         var_decl.*.thread_local_token = thread_local_token;
         var_decl.*.comptime_token = null;
-        var_decl.*.extern_export_token = export_token orelse extern_token;
+        var_decl.*.extern_export_token = extern_token orelse export_token;
         var_decl.*.lib_name = lib_name;
         return node;
     }
