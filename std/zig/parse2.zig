@@ -1053,19 +1053,14 @@ fn parseTypeExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) Error!?*Nod
 fn parseErrorUnionExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const suffix_expr = (try parseSuffixExpr(arena, it, tree)) orelse return null;
 
-    if (eatToken(it, .Bang)) |bang| {
+    if (try SimpleBinOpParser(.Bang, Node.InfixOp.Op.ErrorUnion).parse(arena, it, tree)) |node| {
+        const error_union = node.cast(Node.InfixOp).?;
         const type_expr = try expectNode(arena, it, tree, parseTypeExpr, AstError{
             .ExpectedTypeExpr = AstError.ExpectedTypeExpr{ .token = it.peek().?.start },
         });
-        const op_node = try arena.create(Node.InfixOp);
-        op_node.* = Node.InfixOp{
-            .base = Node{ .id = .InfixOp },
-            .op_token = bang,
-            .lhs = suffix_expr,
-            .op = Node.InfixOp.Op.ErrorUnion,
-            .rhs = type_expr,
-        };
-        return &op_node.base;
+        error_union.lhs = suffix_expr;
+        error_union.rhs = type_expr;
+        return node;
     }
 
     return suffix_expr;
