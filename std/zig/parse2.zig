@@ -2014,7 +2014,7 @@ fn parseCompareOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         },
     };
 
-    return try createInfixOp(arena, it.index, op);
+    return try createInfixOp(arena, token.index, op);
 }
 
 // BitwiseOp
@@ -2039,7 +2039,7 @@ fn parseBitwiseOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         },
     };
 
-    return try createInfixOp(arena, it.index, op);
+    return try createInfixOp(arena, token.index, op);
 }
 
 // BitShiftOp
@@ -2058,7 +2058,7 @@ fn parseBitShiftOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         },
     };
 
-    return try createInfixOp(arena, it.index, op);
+    return try createInfixOp(arena, token.index, op);
 }
 
 // AdditionOp
@@ -2083,7 +2083,7 @@ fn parseAdditionOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         },
     };
 
-    return try createInfixOp(arena, it.index, op);
+    return try createInfixOp(arena, token.index, op);
 }
 
 // MultiplyOp
@@ -2110,7 +2110,7 @@ fn parseMultiplyOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         },
     };
 
-    return try createInfixOp(arena, it.index, op);
+    return try createInfixOp(arena, token.index, op);
 }
 
 // PrefixOp
