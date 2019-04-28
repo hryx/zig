@@ -2658,20 +2658,25 @@ fn parsePrefixOpExpr(
     opParseFn: ParseFn,
     childParseFn: ParseFn,
 ) Error!?*Node {
-    if (try opParseFn(arena, it, tree)) |op| {
-        const child = try expectNode(
-            arena,
-            it,
-            tree,
-            childParseFn,
-            AstError{
-                .InvalidToken = AstError.InvalidToken{ .token = it.peek().?.start },
-            },
-        );
-        op.cast(Node.PrefixOp).?.rhs = child;
-        return op;
+    const first_op = try opParseFn(arena, it, tree);
+    if (first_op) |node| {
+        var rightmost_op = node;
+        while (true) {
+            if (try opParseFn(arena, it, tree)) |rhs| {
+                rightmost_op.cast(Node.PrefixOp).?.rhs = rhs;
+                rightmost_op = rhs;
+            } else break;
+        }
+
+        // If any prefix op existed, a child node on the RHS is required
+        rightmost_op.cast(Node.PrefixOp).?.rhs = try expectNode(arena, it, tree, childParseFn, AstError{
+            .InvalidToken = AstError.InvalidToken{ .token = it.peek().?.start },
+        });
+        return first_op;
     }
-    return childParseFn(arena, it, tree);
+
+    // Otherwise, the child node is optional
+    return try childParseFn(arena, it, tree);
 }
 
 // Child (Op Child)(*/?)
