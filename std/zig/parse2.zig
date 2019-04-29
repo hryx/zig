@@ -1075,23 +1075,14 @@ fn parseErrorUnionExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*No
 fn parseSuffixExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     if (try parseAsyncPrefix(arena, it, tree)) |async_node| {
         // TODO: Implement hack for parsing `async fn ...` in ast_parse_suffix_expr
-        var child = try expectNode(arena, it, tree, parsePrimaryTypeExpr, AstError{
+        var res = try expectNode(arena, it, tree, parsePrimaryTypeExpr, AstError{
             // TODO: different error?
             .ExpectedPrimaryExpr = AstError.ExpectedPrimaryExpr{ .token = it.peek().?.start },
         });
 
         while (try parseSuffixOp(arena, it, tree)) |suffix| {
-            // TODO: all of this, maybe
-            switch (suffix.cast(Node.SuffixOp).?.op) {
-                .Call => |op| {},
-                .ArrayAccess => |op| {},
-                .Slice => |op| {},
-                .ArrayInitializer => |op| {},
-                .StructInitializer => |op| {},
-                .Deref => |op| {},
-                .UnwrapOptional => |op| {},
-            }
-            child = suffix;
+            suffix.cast(Node.SuffixOp).?.lhs = res;
+            res = suffix;
         }
 
         const params = (try parseFnCallArguments(arena, it, tree)) orelse {
@@ -1104,7 +1095,7 @@ fn parseSuffixExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         const node = try arena.create(Node.SuffixOp);
         node.* = Node.SuffixOp{
             .base = Node{ .id = .SuffixOp },
-            .lhs = child,
+            .lhs = res,
             .op = Node.SuffixOp.Op{
                 .Call = Node.SuffixOp.Op.Call{
                     .params = params.list,
