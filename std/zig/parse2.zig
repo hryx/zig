@@ -252,6 +252,11 @@ fn parseFnProto(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
             .Explicit = return_type_expr,
         };
 
+    const var_args_token = if (params.len > 0)
+        params.at(params.len - 1).*.cast(Node.ParamDecl).?.var_args_token
+    else
+        null;
+
     const fn_proto_node = try arena.create(Node.FnProto);
     fn_proto_node.* = Node.FnProto{
         .base = Node{ .id = .FnProto },
@@ -261,7 +266,7 @@ fn parseFnProto(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         .name_token = name_token,
         .params = params,
         .return_type = return_type,
-        .var_args_token = undefined, // TODO ?TokenIndex
+        .var_args_token = var_args_token,
         .extern_export_inline_token = null,
         .cc_token = null,
         .async_attr = null,
@@ -2426,8 +2431,6 @@ fn parsePtrTypeStart(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node
         .rhs = undefined, // set by caller
     };
     return &node.base;
-    // TODO: zig fmt allows expression body of `if` on its own line, but forces the expression
-    // body of an `else if` to be all on the same line
 }
 
 // ContainerDeclAuto <- ContainerDeclType LBRACE ContainerMembers RBRACE
@@ -2564,7 +2567,7 @@ fn parseBuiltinCall(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node 
         .base = Node{ .id = .BuiltinCall },
         .builtin_token = token,
         .params = params.list,
-        .rparen_token = params.rparen, // TODO TokenIndex
+        .rparen_token = params.rparen,
     };
     return &node.base;
 }
