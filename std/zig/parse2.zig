@@ -1104,7 +1104,7 @@ fn parseSuffixExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
             .lhs = child,
             .op = Node.SuffixOp.Op{
                 .Call = Node.SuffixOp.Op.Call{
-                    .params = params,
+                    .params = params.list,
                     .async_attr = async_node.cast(Node.AsyncAttribute).?,
                 },
             },
@@ -1128,7 +1128,7 @@ fn parseSuffixExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
                     .lhs = res,
                     .op = Node.SuffixOp.Op{
                         .Call = Node.SuffixOp.Op.Call{
-                            .params = params,
+                            .params = params.list,
                             .async_attr = null,
                         },
                     },
@@ -1170,7 +1170,7 @@ fn parseSuffixExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 //      / STRINGLITERAL
 //      / SwitchExpr
 fn parsePrimaryTypeExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
-    // TODO: @[a-zA-Z_][a-zA-Z0-9]* (builtin identifier)
+    if (try parseBuiltinCall(arena, it, tree)) |node| return node;
     if (eatToken(it, .CharLiteral)) |token| {
         const node = try arena.create(Node.CharLiteral);
         node.* = Node.CharLiteral{
@@ -1179,7 +1179,6 @@ fn parsePrimaryTypeExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*N
         };
         return &node.base;
     }
-
     if (try parseContainerDecl(arena, it, tree)) |node| return node;
     if (try parseErrorSetDecl(arena, it, tree)) |node| return node;
     if (try parseFloatLiteral(arena, it, tree)) |node| return node;
@@ -2369,12 +2368,17 @@ fn parseAsyncPrefix(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node 
 
 // FnCallArguments <- LPAREN ExprList RPAREN
 // ExprList <- (Expr COMMA)* Expr?
-fn parseFnCallArguments(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?Node.SuffixOp.Op.Call.ParamList {
+fn parseFnCallArguments(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?AnnotatedParamList {
     if (eatToken(it, .LParen) == null) return null;
-    const list = try ListParser(Node.SuffixOp.Op.Call.ParamList, parseExpr).parse(arena, it, tree);
-    _ = try expectToken(it, tree, .RParen);
-    return list;
+    const list = try ListParser(Node.FnProto.ParamList, parseExpr).parse(arena, it, tree);
+    const rparen = try expectToken(it, tree, .RParen);
+    return AnnotatedParamList{ .list = list, .rparen = rparen };
 }
+
+const AnnotatedParamList = struct {
+    list: Node.FnProto.ParamList, // NOTE: may also be any other type SegmentedList(*Node, 2)
+    rparen: TokenIndex,
+};
 
 // ArrayTypeStart <- LBRACKET Expr? RBRACKET
 fn parseArrayTypeStart(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
@@ -2414,25 +2418,23 @@ fn parsePtrTypeStart(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node
         eatToken(it, .AsteriskAsterisk) orelse
         eatToken(it, .BracketStarBracket) orelse
         eatToken(it, .BracketStarCBracket) orelse
-        null;
+        return null;
 
-    if (token) |op_token| {
-        const node = try arena.create(Node.PrefixOp);
-        node.* = Node.PrefixOp{
-            .base = Node{ .id = .PrefixOp },
-            .op_token = op_token,
-            .op = Node.PrefixOp.Op{
-                .PtrType = Node.PrefixOp.PtrInfo{
-                    .allowzero_token = null,
-                    .align_info = null,
-                    .const_token = null,
-                    .volatile_token = null,
-                },
+    const node = try arena.create(Node.PrefixOp);
+    node.* = Node.PrefixOp{
+        .base = Node{ .id = .PrefixOp },
+        .op_token = token,
+        .op = Node.PrefixOp.Op{
+            .PtrType = Node.PrefixOp.PtrInfo{
+                .allowzero_token = null,
+                .align_info = null,
+                .const_token = null,
+                .volatile_token = null,
             },
-            .rhs = undefined, // set by caller
-        };
-        return &node.base;
-    } else return null;
+        },
+        .rhs = undefined, // set by caller
+    };
+    return &node.base;
     // TODO: zig fmt allows expression body of `if` on its own line, but forces the expression
     // body of an `else if` to be all on the same line
 }
@@ -2558,6 +2560,24 @@ const ParseFn = fn (*Allocator, *TokenIterator, *Tree) Error!?*Node;
 
 // Helper parsers not included in the grammar
 
+fn parseBuiltinCall(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
+    const token = eatToken(it, .Builtin) orelse return null;
+    const params = (try parseFnCallArguments(arena, it, tree)) orelse {
+        try tree.errors.push(AstError{
+            .ExpectedParamList = AstError.ExpectedParamList{ .token = it.peek().?.start },
+        });
+        return Error.UnexpectedToken;
+    };
+    const node = try arena.create(Node.BuiltinCall);
+    node.* = Node.BuiltinCall{
+        .base = Node{ .id = .BuiltinCall },
+        .builtin_token = token,
+        .params = params.list,
+        .rparen_token = params.rparen, // TODO TokenIndex
+    };
+    return &node.base;
+}
+
 fn parseIdentifier(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const token = eatToken(it, .Identifier) orelse return null;
     const node = try arena.create(Node.Identifier);
@@ -2679,7 +2699,8 @@ fn parsePrefixOpExpr(
     return try childParseFn(arena, it, tree);
 }
 
-// Child (Op Child)(*/?)
+// Child (Op Child)*
+// Child (Op Child)?
 fn parseBinOpExpr(
     arena: *Allocator,
     it: *TokenIterator,
