@@ -1436,13 +1436,16 @@ fn parseAsmExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const asm_token = eatToken(it, .Keyword_asm) orelse return null;
     const volatile_token = eatToken(it, .Keyword_volatile);
     _ = try expectToken(it, tree, .LParen);
+    const template = try expectNode(arena, it, tree, parseStringLiteral, AstError{
+        .ExpectedStringLiteral = AstError.ExpectedStringLiteral{ .token = it.peek().?.start },
+    });
 
     const node = try arena.create(Node.Asm);
     node.* = Node.Asm{
         .base = Node{ .id = .Asm },
         .asm_token = asm_token,
         .volatile_token = volatile_token,
-        .template = undefined, // TODO: what is this?
+        .template = template,
         .outputs = undefined,
         .inputs = undefined,
         .clobbers = undefined,
@@ -1461,7 +1464,7 @@ fn parseEnumLiteral(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node 
 
     const node = try arena.create(Node.EnumLiteral);
     node.* = Node.EnumLiteral{
-        .base = undefined, // TODO: ??
+        .base = Node{ .id = .EnumLiteral },
         .dot = dot,
         .name = name,
     };
