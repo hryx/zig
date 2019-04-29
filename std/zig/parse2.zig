@@ -2450,67 +2450,60 @@ fn parseContainerDeclAuto(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?
 }
 
 // ContainerDeclType
-//     <- (KEYWORD_struct / KEYWORD_enum) (LPAREN Expr RPAREN)?
+//     <- KEYWORD_struct
+//      / KEYWORD_enum (LPAREN Expr RPAREN)?
 //      / KEYWORD_union (LPAREN (KEYWORD_enum (LPAREN Expr RPAREN)? / Expr) RPAREN)?
 fn parseContainerDeclType(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
-    const container_type = eatToken(it, .Keyword_struct) orelse eatToken(it, .Keyword_enum);
-    if (container_type) |kind_token| {
-        // TODO: https://github.com/ziglang/zig/issues/2330
-        const init_arg_expr = if (eatToken(it, .LParen) != null) blk: {
-            const expr = try expectNode(arena, it, tree, parseExpr, AstError{
-                .ExpectedExpr = AstError.ExpectedExpr{ .token = it.peek().?.start },
-            });
-            _ = try expectToken(it, tree, .RParen);
-            break :blk Node.ContainerDecl.InitArg{ .Type = expr };
-        } else Node.ContainerDecl.InitArg{ .None = {} };
+    const kind_token = nextNonCommentToken(it);
 
-        const node = try arena.create(Node.ContainerDecl);
-        node.* = Node.ContainerDecl{
-            .base = Node{ .id = .ContainerDecl },
-            .layout_token = null,
-            .kind_token = kind_token,
-            .init_arg_expr = init_arg_expr,
-            .fields_and_decls = undefined, // set by caller
-            .lbrace_token = undefined, // set by caller
-            .rbrace_token = undefined, // set by caller
-        };
-        return &node.base;
-    }
-
-    if (eatToken(it, .Keyword_union)) |kind_token| {
-        const init_arg_expr = if (eatToken(it, .LParen) != null) set_init_arg: {
-            if (eatToken(it, .Keyword_enum) != null) {
-                const enum_expr = if (eatToken(it, .LParen) != null) set_enum_expr: {
-                    const expr = try expectNode(arena, it, tree, parseExpr, AstError{
-                        .ExpectedExpr = AstError.ExpectedExpr{ .token = it.peek().?.start },
-                    });
-                    _ = try expectToken(it, tree, .RParen);
-                    break :set_enum_expr expr;
-                } else null;
-                break :set_init_arg Node.ContainerDecl.InitArg{ .Enum = enum_expr };
+    const init_arg_expr = switch (kind_token.ptr.id) {
+        .Keyword_struct => Node.ContainerDecl.InitArg{ .None = {} },
+        .Keyword_enum => blk: {
+            if (eatToken(it, .LParen) != null) {
+                const expr = try expectNode(arena, it, tree, parseExpr, AstError{
+                    .ExpectedExpr = AstError.ExpectedExpr{ .token = it.peek().?.start },
+                });
+                _ = try expectToken(it, tree, .RParen);
+                break :blk Node.ContainerDecl.InitArg{ .Type = expr };
             }
+            break :blk Node.ContainerDecl.InitArg{ .None = {} };
+        },
+        .Keyword_union => blk: {
+            if (eatToken(it, .LParen) != null) {
+                if (eatToken(it, .Keyword_enum) != null) {
+                    if (eatToken(it, .LParen) != null) {
+                        const expr = try expectNode(arena, it, tree, parseExpr, AstError{
+                            .ExpectedExpr = AstError.ExpectedExpr{ .token = it.peek().?.start },
+                        });
+                        _ = try expectToken(it, tree, .RParen);
+                        break :blk Node.ContainerDecl.InitArg{ .Enum = expr };
+                    }
+                }
+                const expr = try expectNode(arena, it, tree, parseExpr, AstError{
+                    .ExpectedExpr = AstError.ExpectedExpr{ .token = it.peek().?.start },
+                });
+                _ = try expectToken(it, tree, .RParen);
+                break :blk Node.ContainerDecl.InitArg{ .Type = expr };
+            }
+            break :blk Node.ContainerDecl.InitArg{ .None = {} };
+        },
+        else => {
+            rewindTokenIterator(it);
+            return null;
+        },
+    };
 
-            const expr = try expectNode(arena, it, tree, parseExpr, AstError{
-                .ExpectedExpr = AstError.ExpectedExpr{ .token = it.peek().?.start },
-            });
-            _ = try expectToken(it, tree, .RParen);
-            break :set_init_arg Node.ContainerDecl.InitArg{ .Type = expr };
-        } else Node.ContainerDecl.InitArg{ .None = {} };
-
-        const node = try arena.create(Node.ContainerDecl);
-        node.* = Node.ContainerDecl{
-            .base = Node{ .id = .ContainerDecl },
-            .layout_token = null,
-            .kind_token = kind_token,
-            .init_arg_expr = init_arg_expr,
-            .fields_and_decls = undefined, // set by caller
-            .lbrace_token = undefined, // set by caller
-            .rbrace_token = undefined, // set by caller
-        };
-        return &node.base;
-    }
-
-    return null;
+    const node = try arena.create(Node.ContainerDecl);
+    node.* = Node.ContainerDecl{
+        .base = Node{ .id = .ContainerDecl },
+        .layout_token = null,
+        .kind_token = kind_token.index,
+        .init_arg_expr = init_arg_expr,
+        .fields_and_decls = undefined, // set by caller
+        .lbrace_token = undefined, // set by caller
+        .rbrace_token = undefined, // set by caller
+    };
+    return &node.base;
 }
 
 // ByteAlign <- KEYWORD_align LPAREN Expr RPAREN
