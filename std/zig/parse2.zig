@@ -1316,13 +1316,21 @@ fn parseLabeledTypeExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*N
         }
     }
 
-    const node = (try parseLoopTypeExpr(arena, it, tree)) orelse return null;
-    switch (node.id) {
-        .For => node.cast(Node.For).?.label = label,
-        .While => node.cast(Node.While).?.label = label,
-        else => unreachable,
+    if (try parseLoopTypeExpr(arena, it, tree)) |node| {
+        switch (node.id) {
+            .For => node.cast(Node.For).?.label = label,
+            .While => node.cast(Node.While).?.label = label,
+            else => unreachable,
+        }
+        return node;
     }
-    return node;
+
+    if (label != null) {
+        // Rewind IDENTIFIER and ":"
+        _ = rewindTokenIterator(it);
+        _ = rewindTokenIterator(it);
+    }
+    return null;
 }
 
 // LoopTypeExpr <- KEYWORD_inline? (ForTypeExpr / WhileTypeExpr)
@@ -1339,7 +1347,13 @@ fn parseLoopTypeExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node
         return node;
     }
 
-    return null;
+    if (inline_token == null) return null;
+
+    // If we've seen "inline", there should have been a "for" or "while"
+    try tree.errors.push(AstError{
+        .ExpectedInlinable = AstError.ExpectedInlinable{ .token = it.index },
+    });
+    return Error.UnexpectedToken;
 }
 
 // ForTypeExpr <- ForPrefix TypeExpr (KEYWORD_else TypeExpr)?
@@ -1569,8 +1583,10 @@ fn parseBreakLabel(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 // BlockLabel <- IDENTIFIER COLON
 fn parseBlockLabel(arena: *Allocator, it: *TokenIterator, tree: *Tree) ?TokenIndex {
     const token = eatToken(it, .Identifier) orelse return null;
-    _ = eatToken(it, .Colon) orelse return null;
-    return token;
+    if (eatToken(it, .Colon) != null) return token;
+    // Rewind IDENTIFIER
+    _ = rewindTokenIterator(it);
+    return null;
 }
 
 // FieldInit <- DOT IDENTIFIER EQUAL Expr
@@ -1661,6 +1677,8 @@ fn parseParamDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         break :blk null;
     };
     const param_type = (try parseParamType(arena, it, tree)) orelse {
+        // Only return cleanly if no keyword or identifier was found
+        if (noalias_token == null and comptime_token == null and name_token == null) return null;
         try tree.errors.push(AstError{
             .ExpectedParamType = AstError.ExpectedParamType{ .token = it.index },
         });
