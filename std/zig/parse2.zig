@@ -705,8 +705,12 @@ fn parseBlockExprStatement(arena: *Allocator, it: *TokenIterator, tree: *Tree) !
 
 // BlockExpr <- BlockLabel? Block
 fn parseBlockExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) Error!?*Node {
-    const label_token = parseBlockLabel(arena, it, tree) orelse return null;
-    const block_node = (try parseBlock(arena, it, tree)) orelse return null;
+    const label_token = parseBlockLabel(arena, it, tree);
+    const block_node = (try parseBlock(arena, it, tree)) orelse {
+        // Rewind BlockLabel
+        if (label_token != null) _ = prevToken(it);
+        return null;
+    };
     block_node.cast(Node.Block).?.label = label_token;
     return block_node;
 }
