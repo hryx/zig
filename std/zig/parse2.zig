@@ -1108,7 +1108,7 @@ fn parseSuffixExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
                     .async_attr = async_node.cast(Node.AsyncAttribute).?,
                 },
             },
-            .rtoken = undefined, // TODO TokenIndex ehhhhhh????
+            .rtoken = params.rparen,
         };
         return &node.base;
     }
@@ -1132,14 +1132,13 @@ fn parseSuffixExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
                             .async_attr = null,
                         },
                     },
-                    .rtoken = undefined, // TODO: TokenIndex HMMMMM.
+                    .rtoken = params.rparen,
                 };
                 res = &call.base;
                 continue;
             }
             break;
         }
-        // TODO
         return res;
     }
 
