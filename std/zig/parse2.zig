@@ -547,6 +547,13 @@ fn parseLabeledStatement(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*
         return node;
     }
 
+    if (label_token != null) {
+        try tree.errors.push(AstError{
+            .ExpectedLabelable = AstError.ExpectedLabelable{ .token = it.index },
+        });
+        return Error.UnexpectedToken;
+    }
+
     return null;
 }
 
