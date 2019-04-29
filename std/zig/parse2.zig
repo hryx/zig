@@ -785,13 +785,13 @@ fn parsePrimaryExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node 
     if (try parseIfExpr(arena, it, tree)) |node| return node;
 
     if (eatToken(it, .Keyword_break)) |token| {
-        const label = parseBreakLabel(arena, it, tree);
+        const label = try parseBreakLabel(arena, it, tree);
         const expr_node = try parseExpr(arena, it, tree);
         const node = try arena.create(Node.ControlFlowExpression);
         node.* = Node.ControlFlowExpression{
             .base = Node{ .id = .ControlFlowExpression },
             .ltoken = token,
-            .kind = Node.ControlFlowExpression.Kind{ .Break = null }, // TODO: what goes here?
+            .kind = Node.ControlFlowExpression.Kind{ .Break = label },
             .rhs = expr_node,
         };
         return &node.base;
@@ -826,12 +826,12 @@ fn parsePrimaryExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node 
     }
 
     if (eatToken(it, .Keyword_continue)) |token| {
-        const label = parseBreakLabel(arena, it, tree);
+        const label = try parseBreakLabel(arena, it, tree);
         const node = try arena.create(Node.ControlFlowExpression);
         node.* = Node.ControlFlowExpression{
             .base = Node{ .id = .ControlFlowExpression },
             .ltoken = token,
-            .kind = Node.ControlFlowExpression.Kind{ .Continue = null }, // TODO: what goes here?
+            .kind = Node.ControlFlowExpression.Kind{ .Continue = label },
             .rhs = null,
         };
         return &node.base;
@@ -945,8 +945,6 @@ fn parseLoopExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         node.cast(Node.While).?.inline_token = inline_token;
         return node;
     }
-
-    // TODO: error?
 
     return null;
 }
@@ -1570,9 +1568,11 @@ fn parseAsmClobbers(arena: *Allocator, it: *TokenIterator, tree: *Tree, asm_node
 }
 
 // BreakLabel <- COLON IDENTIFIER
-fn parseBreakLabel(arena: *Allocator, it: *TokenIterator, tree: *Tree) ?TokenIndex {
+fn parseBreakLabel(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     _ = eatToken(it, .Colon) orelse return null;
-    return eatToken(it, .Identifier);
+    return try expectNode(arena, it, tree, parseIdentifier, AstError{
+        .ExpectedIdentifier = AstError.ExpectedIdentifier{ .token = it.peek().?.start },
+    });
 }
 
 // BlockLabel <- IDENTIFIER COLON
