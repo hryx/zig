@@ -1664,18 +1664,12 @@ fn parseParamDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         _ = rewindTokenIterator(it); // ParamType may also be an identifier
         break :blk null;
     };
-    const param_type = (try parseParamType(arena, it, tree)) orelse return null;
-
-    switch (param_type) {
-        .None => {
-            if (name_token != null)
-                try tree.errors.push(AstError{
-                    .ExpectedParamType = AstError.ExpectedParamType{ .token = it.peek().?.start },
-                });
-            return null;
-        },
-        else => {},
-    }
+    const param_type = (try parseParamType(arena, it, tree)) orelse {
+        try tree.errors.push(AstError{
+            .ExpectedParamType = AstError.ExpectedParamType{ .token = it.peek().?.start },
+        });
+        return Error.UnexpectedToken;
+    };
 
     const param_decl = try arena.create(Node.ParamDecl);
     param_decl.* = Node.ParamDecl{
@@ -1684,15 +1678,10 @@ fn parseParamDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         .comptime_token = comptime_token,
         .noalias_token = noalias_token,
         .name_token = name_token,
-        .type_node = undefined, // TODO: ok that this remains undefined when ... is found?
+        // TODO: These should be squished into a ParamType enum
+        .type_node = undefined,
         .var_args_token = null,
     };
-    switch (param_type) {
-        .VarType => |node| param_decl.type_node = node,
-        .TypeExpr => |node| param_decl.type_node = node,
-        .VarArgs => |token| param_decl.var_args_token = token,
-        else => unreachable,
-    }
     return &param_decl.base;
 }
 
@@ -1714,11 +1703,11 @@ fn parseParamType(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?ParamTyp
     return null;
 }
 
+// TODO: Move to ast.Node.ParamDecl.ParamType
 const ParamType = union(enum) {
     VarType: *Node,
     VarArgs: TokenIndex,
     TypeExpr: *Node,
-    None,
 };
 
 // IfPrefix <- KEYWORD_if LPAREN Expr RPAREN PtrPayload?
