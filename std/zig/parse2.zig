@@ -51,6 +51,10 @@ fn parseRoot(arena: *Allocator, it: *TokenIterator, tree: *Tree) !*Node.Root {
     node.* = Node.Root{
         .base = Node{ .id = .Root },
         .decls = undefined,
+        // TODO: File an issue: Currently it is impossible to have a container-level
+        //       doc comment and NO doc comment on the first decl. For now, simply
+        //       ignore the problem and assume that there will be no container-level
+        //       doc comments.
         .doc_comments = null,
         .shebang = null,
         .eof_token = undefined,
@@ -76,24 +80,28 @@ fn parseContainerMembers(arena: *Allocator, it: *TokenIterator, tree: *Tree, kin
     var list = Node.Root.DeclList.init(arena);
 
     while (true) {
+        const doc_comments = try parseDocComment(arena, it, tree);
+
         if (try parseTestDecl(arena, it, tree)) |node| {
+            node.cast(Node.TestDecl).?.doc_comments = doc_comments;
             try list.push(node);
             continue;
         }
 
         if (try parseTopLevelComptime(arena, it, tree)) |node| {
+            node.cast(Node.Comptime).?.doc_comments = doc_comments;
             try list.push(node);
             continue;
         }
 
         const visibility_token = eatToken(it, .Keyword_pub);
 
-        if (try parseTopLevelDecl(arena, it, tree, visibility_token)) |node| {
+        if (try parseTopLevelDecl(arena, it, tree, visibility_token, doc_comments)) |node| {
             try list.push(node);
             continue;
         }
 
-        if (try parseContainerField(arena, it, tree, kind)) |node| {
+        if (try parseContainerField(arena, it, tree, kind, doc_comments)) |node| {
             if (node.cast(Node.StructField)) |struct_field| struct_field.visib_token = visibility_token;
             try list.push(node);
             if (eatToken(it, .Comma)) |_| continue else break;
@@ -155,7 +163,7 @@ fn parseTopLevelComptime(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*
 //     <- (KEYWORD_export / KEYWORD_extern STRINGLITERAL? / KEYWORD_inline)? FnProto (SEMICOLON / Block)
 //      / (KEYWORD_export / KEYWORD_extern STRINGLITERAL?)? KEYWORD_threadlocal? VarDecl
 //      / KEYWORD_use Expr SEMICOLON
-fn parseTopLevelDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree, vis: ?TokenIndex) !?*Node {
+fn parseTopLevelDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree, vis: ?TokenIndex, doc_comments: ?*Node.DocComment) !?*Node {
     const export_token = eatToken(it, .Keyword_export);
     const extern_token = if (export_token == null) eatToken(it, .Keyword_extern) else null;
     const lib_name = if (extern_token != null) try parseStringLiteral(arena, it, tree) else null;
@@ -164,6 +172,7 @@ fn parseTopLevelDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree, vis: ?T
     if (try parseFnProto(arena, it, tree)) |node| {
         const fn_node = node.cast(Node.FnProto).?;
 
+        fn_node.*.doc_comments = doc_comments;
         fn_node.*.visib_token = vis;
         fn_node.*.extern_export_inline_token = extern_token orelse export_token orelse inline_token;
         fn_node.*.lib_name = lib_name;
@@ -186,7 +195,7 @@ fn parseTopLevelDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree, vis: ?T
 
     if (try parseVarDecl(arena, it, tree)) |node| {
         var var_decl = node.cast(Node.VarDecl).?;
-        var_decl.*.doc_comments = null;
+        var_decl.*.doc_comments = doc_comments;
         var_decl.*.visib_token = vis;
         var_decl.*.thread_local_token = thread_local_token;
         var_decl.*.comptime_token = null;
@@ -201,6 +210,7 @@ fn parseTopLevelDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree, vis: ?T
     });
     const semicolon_token = try expectToken(it, tree, .Semicolon);
     const use_node_raw = use_node.cast(Node.Use).?;
+    use_node_raw.*.doc_comments = doc_comments;
     use_node_raw.*.visib_token = vis;
     use_node_raw.*.expr = expr_node;
     use_node_raw.*.semicolon_token = semicolon_token;
@@ -332,7 +342,7 @@ fn parseVarDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 }
 
 // ContainerField <- IDENTIFIER (COLON TypeExpr)? (EQUAL Expr)?
-fn parseContainerField(arena: *Allocator, it: *TokenIterator, tree: *Tree, kind: Token.Id) !?*Node {
+fn parseContainerField(arena: *Allocator, it: *TokenIterator, tree: *Tree, kind: Token.Id, doc_comments: ?*Node.DocComment) !?*Node {
     const name_token = eatToken(it, .Identifier) orelse return null;
 
     const type_expr = blk: {
@@ -359,7 +369,7 @@ fn parseContainerField(arena: *Allocator, it: *TokenIterator, tree: *Tree, kind:
                 .base = Node{ .id = .StructField },
                 .name_token = name_token,
                 .type_expr = type_expr orelse undefined,
-                .doc_comments = null,
+                .doc_comments = doc_comments,
                 .visib_token = null,
             };
             return &node.base;
@@ -368,7 +378,7 @@ fn parseContainerField(arena: *Allocator, it: *TokenIterator, tree: *Tree, kind:
             const node = try arena.create(Node.UnionTag);
             node.* = Node.UnionTag{
                 .base = Node{ .id = .UnionTag },
-                .doc_comments = null,
+                .doc_comments = doc_comments,
                 .name_token = name_token,
                 .type_expr = type_expr orelse undefined,
                 .value_expr = default_value,
@@ -379,7 +389,7 @@ fn parseContainerField(arena: *Allocator, it: *TokenIterator, tree: *Tree, kind:
             const node = try arena.create(Node.EnumTag);
             node.* = Node.EnumTag{
                 .base = Node{ .id = .EnumTag },
-                .doc_comments = null,
+                .doc_comments = doc_comments,
                 .name_token = name_token,
                 .value = default_value,
             };
@@ -1327,8 +1337,8 @@ fn parseLabeledTypeExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*N
 
     if (label != null) {
         // Rewind IDENTIFIER and ":"
-        _ = rewindTokenIterator(it);
-        _ = rewindTokenIterator(it);
+        _ = prevToken(it);
+        _ = prevToken(it);
     }
     return null;
 }
@@ -1585,7 +1595,7 @@ fn parseBlockLabel(arena: *Allocator, it: *TokenIterator, tree: *Tree) ?TokenInd
     const token = eatToken(it, .Identifier) orelse return null;
     if (eatToken(it, .Colon) != null) return token;
     // Rewind IDENTIFIER
-    _ = rewindTokenIterator(it);
+    _ = prevToken(it);
     return null;
 }
 
@@ -1673,7 +1683,7 @@ fn parseParamDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const name_token = blk: {
         const identifier = eatToken(it, .Identifier) orelse break :blk null;
         if (eatToken(it, .Colon) != null) break :blk identifier;
-        _ = rewindTokenIterator(it); // ParamType may also be an identifier
+        _ = prevToken(it); // ParamType may also be an identifier
         break :blk null;
     };
     const param_type = (try parseParamType(arena, it, tree)) orelse {
@@ -1954,7 +1964,7 @@ fn parseSwitchItem(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 //      / MINUSPERCENTEQUAL
 //      / EQUAL
 fn parseAssignOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
-    const token = nextNonCommentToken(it);
+    const token = nextToken(it);
 
     const Op = Node.InfixOp.Op;
     const op = switch (token.ptr.id) {
@@ -1973,7 +1983,7 @@ fn parseAssignOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         .MinusPercentEqual => Op{ .AssignMinusWrap = {} },
         .Equal => Op{ .Assign = {} },
         else => {
-            rewindTokenIterator(it);
+            prevToken(it);
             return null;
         },
     };
@@ -1999,7 +2009,7 @@ fn parseAssignOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 fn parseCompareOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const ops = Node.InfixOp.Op;
 
-    const token = nextNonCommentToken(it);
+    const token = nextToken(it);
     const op = switch (token.ptr.id) {
         .EqualEqual => ops{ .EqualEqual = {} },
         .BangEqual => ops{ .BangEqual = {} },
@@ -2008,7 +2018,7 @@ fn parseCompareOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         .AngleBracketLeftEqual => ops{ .LessOrEqual = {} },
         .AngleBracketRightEqual => ops{ .GreaterOrEqual = {} },
         else => {
-            _ = rewindTokenIterator(it);
+            _ = prevToken(it);
             return null;
         },
     };
@@ -2025,7 +2035,7 @@ fn parseCompareOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 fn parseBitwiseOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const ops = Node.InfixOp.Op;
 
-    const token = nextNonCommentToken(it);
+    const token = nextToken(it);
     const op = switch (token.ptr.id) {
         .Ampersand => ops{ .BitAnd = {} },
         .Caret => ops{ .BitXor = {} },
@@ -2033,7 +2043,7 @@ fn parseBitwiseOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         .Keyword_orelse => ops{ .UnwrapOptional = {} },
         .Keyword_catch => ops{ .Catch = try parsePayload(arena, it, tree) },
         else => {
-            _ = rewindTokenIterator(it);
+            _ = prevToken(it);
             return null;
         },
     };
@@ -2047,12 +2057,12 @@ fn parseBitwiseOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 fn parseBitShiftOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const ops = Node.InfixOp.Op;
 
-    const token = nextNonCommentToken(it);
+    const token = nextToken(it);
     const op = switch (token.ptr.id) {
         .AngleBracketAngleBracketLeft => ops{ .BitShiftLeft = {} },
         .AngleBracketAngleBracketRight => ops{ .BitShiftRight = {} },
         else => {
-            _ = rewindTokenIterator(it);
+            _ = prevToken(it);
             return null;
         },
     };
@@ -2069,7 +2079,7 @@ fn parseBitShiftOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 fn parseAdditionOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const ops = Node.InfixOp.Op;
 
-    const token = nextNonCommentToken(it);
+    const token = nextToken(it);
     const op = switch (token.ptr.id) {
         .Plus => ops{ .Add = {} },
         .Minus => ops{ .Sub = {} },
@@ -2077,7 +2087,7 @@ fn parseAdditionOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         .PlusPercent => ops{ .AddWrap = {} },
         .MinusPercent => ops{ .SubWrap = {} },
         else => {
-            _ = rewindTokenIterator(it);
+            _ = prevToken(it);
             return null;
         },
     };
@@ -2095,7 +2105,7 @@ fn parseAdditionOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 fn parseMultiplyOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const ops = Node.InfixOp.Op;
 
-    const token = nextNonCommentToken(it);
+    const token = nextToken(it);
     const op = switch (token.ptr.id) {
         .PipePipe => ops{ .BoolOr = {} },
         .Asterisk => ops{ .Mult = {} },
@@ -2104,7 +2114,7 @@ fn parseMultiplyOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         .AsteriskAsterisk => ops{ .ArrayMult = {} },
         .AsteriskPercent => ops{ .MultWrap = {} },
         else => {
-            _ = rewindTokenIterator(it);
+            _ = prevToken(it);
             return null;
         },
     };
@@ -2123,7 +2133,7 @@ fn parseMultiplyOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 fn parsePrefixOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const ops = Node.PrefixOp.Op;
 
-    const token = nextNonCommentToken(it);
+    const token = nextToken(it);
     const op = switch (token.ptr.id) {
         .Bang => ops{ .BoolNot = {} },
         .Minus => ops{ .Negation = {} },
@@ -2133,7 +2143,7 @@ fn parsePrefixOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         .Keyword_try => ops{ .Try = {} },
         .Keyword_await => ops{ .Await = {} },
         else => {
-            _ = rewindTokenIterator(it);
+            _ = prevToken(it);
             return null;
         },
     };
@@ -2463,7 +2473,7 @@ fn parseContainerDeclAuto(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?
 //      / KEYWORD_enum (LPAREN Expr RPAREN)?
 //      / KEYWORD_union (LPAREN (KEYWORD_enum (LPAREN Expr RPAREN)? / Expr) RPAREN)?
 fn parseContainerDeclType(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
-    const kind_token = nextNonCommentToken(it);
+    const kind_token = nextToken(it);
 
     const init_arg_expr = switch (kind_token.ptr.id) {
         .Keyword_struct => Node.ContainerDecl.InitArg{ .None = {} },
@@ -2497,7 +2507,7 @@ fn parseContainerDeclType(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?
             break :blk Node.ContainerDecl.InitArg{ .None = {} };
         },
         else => {
-            rewindTokenIterator(it);
+            prevToken(it);
             return null;
         },
     };
@@ -2666,6 +2676,22 @@ fn parseUse(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     return &node.base;
 }
 
+fn parseDocComment(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node.DocComment {
+    var lines = Node.DocComment.LineList.init(arena);
+    while (eatToken(it, .DocComment)) |line| {
+        try lines.push(line);
+    }
+
+    if (lines.len == 0) return null;
+
+    const node = try arena.create(Node.DocComment);
+    node.* = Node.DocComment{
+        .base = Node{ .id = .DocComment },
+        .lines = lines,
+    };
+    return node;
+}
+
 // Op* Child
 fn parsePrefixOpExpr(
     arena: *Allocator,
@@ -2762,11 +2788,11 @@ fn createInfixOp(arena: *Allocator, index: TokenIndex, op: Node.InfixOp.Op) !*No
 }
 
 fn eatToken(it: *TokenIterator, id: Token.Id) ?TokenIndex {
-    return if (it.peek().?.id == id) nextNonCommentToken(it).index else null;
+    return if (it.peek().?.id == id) nextToken(it).index else null;
 }
 
 fn expectToken(it: *TokenIterator, tree: *Tree, id: Token.Id) Error!TokenIndex {
-    const token = nextNonCommentToken(it);
+    const token = nextToken(it);
     if (token.ptr.id != id) {
         try tree.errors.push(AstError{
             .ExpectedToken = AstError.ExpectedToken{ .token = token.index, .expected_id = id },
@@ -2776,7 +2802,7 @@ fn expectToken(it: *TokenIterator, tree: *Tree, id: Token.Id) Error!TokenIndex {
     return token.index;
 }
 
-fn nextNonCommentToken(it: *TokenIterator) AnnotatedToken {
+fn nextToken(it: *TokenIterator) AnnotatedToken {
     const result = AnnotatedToken{
         .index = it.index,
         .ptr = it.next().?,
@@ -2790,7 +2816,7 @@ fn nextNonCommentToken(it: *TokenIterator) AnnotatedToken {
     }
 }
 
-fn rewindTokenIterator(it: *TokenIterator) void {
+fn prevToken(it: *TokenIterator) void {
     while (true) {
         const prev_tok = it.prev() orelse return;
         if (prev_tok.id == .LineComment) continue;
