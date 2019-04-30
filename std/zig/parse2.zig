@@ -104,7 +104,19 @@ fn parseContainerMembers(arena: *Allocator, it: *TokenIterator, tree: *Tree, kin
         if (try parseContainerField(arena, it, tree, kind, doc_comments)) |node| {
             if (node.cast(Node.StructField)) |struct_field| struct_field.visib_token = visibility_token;
             try list.push(node);
-            if (eatToken(it, .Comma)) |_| continue else break;
+            if (eatAnnotatedToken(it, .Comma)) |comma| {
+                if (try parseAppendedDocComment(arena, it, tree, comma.ptr.end)) |appended_comment| {
+                    switch (node.id) {
+                        .StructField => node.cast(Node.StructField).?.doc_comments = appended_comment,
+                        .UnionTag => node.cast(Node.UnionTag).?.doc_comments = appended_comment,
+                        .EnumTag => node.cast(Node.EnumTag).?.doc_comments = appended_comment,
+                        else => unreachable,
+                    }
+                }
+                continue;
+            } else {
+                break;
+            }
         }
 
         // Dangling pub
@@ -1695,6 +1707,7 @@ const FnCC = union(enum) {
 
 // ParamDecl <- (KEYWORD_noalias / KEYWORD_comptime)? (IDENTIFIER COLON)? ParamType
 fn parseParamDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
+    const doc_comments = try parseDocComment(arena, it, tree);
     const noalias_token = eatToken(it, .Keyword_noalias);
     const comptime_token = if (noalias_token == null) eatToken(it, .Keyword_comptime) else null;
     const name_token = blk: {
@@ -1704,8 +1717,11 @@ fn parseParamDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         break :blk null;
     };
     const param_type = (try parseParamType(arena, it, tree)) orelse {
-        // Only return cleanly if no keyword or identifier was found
-        if (noalias_token == null and comptime_token == null and name_token == null) return null;
+        // Only return cleanly if no keyword, identifier, or doc comment was found
+        if (noalias_token == null and
+            comptime_token == null and
+            name_token == null and
+            doc_comments == null) return null;
         try tree.errors.push(AstError{
             .ExpectedParamType = AstError.ExpectedParamType{ .token = it.index },
         });
@@ -1715,7 +1731,7 @@ fn parseParamDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const param_decl = try arena.create(Node.ParamDecl);
     param_decl.* = Node.ParamDecl{
         .base = Node{ .id = .ParamDecl },
-        .doc_comments = null,
+        .doc_comments = doc_comments,
         .comptime_token = comptime_token,
         .noalias_token = noalias_token,
         .name_token = name_token,
@@ -2693,6 +2709,7 @@ fn parseUse(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     return &node.base;
 }
 
+// Eat a multiline doc comment
 fn parseDocComment(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node.DocComment {
     var lines = Node.DocComment.LineList.init(arena);
     while (eatToken(it, .DocComment)) |line| {
@@ -2707,6 +2724,24 @@ fn parseDocComment(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node.D
         .lines = lines,
     };
     return node;
+}
+
+// Eat a single-line doc comment on the same line as another node
+fn parseAppendedDocComment(arena: *Allocator, it: *TokenIterator, tree: *Tree, after_pos: usize) !?*Node.DocComment {
+    const comment_token = eatToken(it, .DocComment) orelse return null;
+    const loc = tree.tokenLocation(after_pos, comment_token);
+    if (loc.line == 0) {
+        const node = try arena.create(Node.DocComment);
+        node.* = Node.DocComment{
+            .base = Node{ .id = .DocComment },
+            .lines = Node.DocComment.LineList.init(arena),
+        };
+        try node.lines.push(comment_token);
+        return node;
+    }
+    // No doc comment; rewind
+    prevToken(it);
+    return null;
 }
 
 // Op* Child
@@ -2805,7 +2840,11 @@ fn createInfixOp(arena: *Allocator, index: TokenIndex, op: Node.InfixOp.Op) !*No
 }
 
 fn eatToken(it: *TokenIterator, id: Token.Id) ?TokenIndex {
-    return if (it.peek().?.id == id) nextToken(it).index else null;
+    return if (eatAnnotatedToken(it, id)) |token| token.index else null;
+}
+
+fn eatAnnotatedToken(it: *TokenIterator, id: Token.Id) ?AnnotatedToken {
+    return if (it.peek().?.id == id) nextToken(it) else null;
 }
 
 fn expectToken(it: *TokenIterator, tree: *Tree, id: Token.Id) Error!TokenIndex {
