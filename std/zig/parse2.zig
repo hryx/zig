@@ -1299,7 +1299,7 @@ fn parseContainerDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Nod
 fn parseErrorSetDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const error_token = eatToken(it, .Keyword_error) orelse return null;
     _ = try expectToken(it, tree, .LBrace);
-    const decls = try parseIdentifierList(arena, it, tree);
+    const decls = try parseErrorTagList(arena, it, tree);
     const rbrace = try expectToken(it, tree, .RBrace);
 
     const node = try arena.create(Node.ErrorSetDecl);
@@ -2592,9 +2592,9 @@ fn parseByteAlign(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 }
 
 // IdentifierList <- (IDENTIFIER COMMA)* IDENTIFIER?
-fn parseIdentifierList(arena: *Allocator, it: *TokenIterator, tree: *Tree) !Node.ErrorSetDecl.DeclList {
-    // ErrorSetDecl.DeclList is used since ErrorSetDecl is the only caller of this function.
-    return try ListParser(Node.ErrorSetDecl.DeclList, parseIdentifier).parse(arena, it, tree);
+// Only ErrorSetDecl parses an IdentifierList
+fn parseErrorTagList(arena: *Allocator, it: *TokenIterator, tree: *Tree) !Node.ErrorSetDecl.DeclList {
+    return try ListParser(Node.ErrorSetDecl.DeclList, parseErrorTag).parse(arena, it, tree);
 }
 
 // SwitchProngList <- (SwitchProng COMMA)* SwitchProng?
@@ -2635,6 +2635,19 @@ fn parseBuiltinCall(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node 
         .builtin_token = token,
         .params = params.list,
         .rparen_token = params.rparen,
+    };
+    return &node.base;
+}
+
+fn parseErrorTag(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
+    const doc_comments = try parseDocComment(arena, it, tree); // no need to rewind on failure
+    const token = eatToken(it, .Identifier) orelse return null;
+
+    const node = try arena.create(Node.ErrorTag);
+    node.* = Node.ErrorTag{
+        .base = Node{ .id = .ErrorTag },
+        .doc_comments = doc_comments,
+        .name_token = token,
     };
     return &node.base;
 }
