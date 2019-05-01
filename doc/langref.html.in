@@ -4,11 +4,12 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
     <title>Documentation - The Zig Programming Language</title>
+    <link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNSAxMCIgZmlsbD0iI2Y3YTQxZCI+PHBhdGggZD0iTTAsMSBIMy41IFYzIEgyIFY3IEgzLjY4MiBMMS44ODEsOSBIMCBaIE0xNSw5IEgxMS41IFY3IEgxMyBWMyBIMTEuMzE4IEwxMy4xMTksMSBIMTUgWiBNNCwxIEg5LjkxMiBMMTMuMzI4LDAuMDIxIEw3LjA0NSw3IEgxMSBWOSBINS4wODggTDEuNjcyLDkuOTc5IEw3Ljk1NSwzIEg0IFoiLz48L3N2Zz4="/>
     <style type="text/css">
       body{
         font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif;
       }
-      a {
+      a:not(:hover) {
         text-decoration: none;
       }
       table, th, td {
@@ -158,13 +159,15 @@
     <div id="contents">
       {#header_open|Introduction#}
       <p>
-      Zig is an open-source programming language designed for <strong>robustness</strong>,
-      <strong>optimality</strong>, and <strong>clarity</strong>.
+      Zig is a general-purpose programming language designed for <strong>robustness</strong>,
+      <strong>optimality</strong>, and <strong>maintainability</strong>.
       </p>
       <ul>
         <li><strong>Robust</strong> - behavior is correct even for edge cases such as out of memory.</li>
         <li><strong>Optimal</strong> - write programs the best way they can behave and perform.</li>
-        <li><strong>Clear</strong> - precisely communicate your intent to the compiler and other programmers. The language imposes a low overhead to reading code.</li>
+        <li><strong>Maintainable</strong> - precisely communicate intent to the compiler and other programmers.
+            The language imposes a low overhead to reading code and is resilient to changing requirements
+            and environments.</li>
       </ul>
       <p>
       Often the most efficient way to learn something new is to see examples, so
@@ -3125,7 +3128,7 @@ test "while null capture" {
     while (eventuallyNullSequence()) |value| {
         sum2 += value;
     } else {
-        assert(sum1 == 3);
+        assert(sum2 == 3);
     }
 }
 
@@ -7272,6 +7275,10 @@ test "@setRuntimeSafety" {
       consider whether you want to use {#syntax#}@sizeOf(T){#endsyntax#} or
       {#syntax#}@typeInfo(T).Int.bits{#endsyntax#}.
       </p>
+      <p>
+      This function measures the size at runtime. For types that are disallowed at runtime, such as
+      {#syntax#}comptime_int{#endsyntax#} and {#syntax#}type{#endsyntax#}, the result is {#syntax#}0{#endsyntax#}.
+      </p>
       {#see_also|@typeInfo#}
       {#header_close#}
 
@@ -7360,20 +7367,30 @@ fn List(comptime T: type) type {
       <pre>{#syntax#}@truncate(comptime T: type, integer: var) T{#endsyntax#}</pre>
       <p>
       This function truncates bits from an integer type, resulting in a smaller
-      integer type.
+      or same-sized integer type.
       </p>
       <p>
-      The following produces a crash in {#link|Debug#} mode and {#link|Undefined Behavior#} in
-      {#link|ReleaseFast#} mode:
+      The following produces safety-checked {#link|Undefined Behavior#}:
       </p>
-      <pre>{#syntax#}const a: u16 = 0xabcd;
-const b: u8 = u8(a);{#endsyntax#}</pre>
+      {#code_begin|test_err|cast truncated bits#}
+test "integer cast panic" {
+    var a: u16 = 0xabcd;
+    var b: u8 = @intCast(u8, a);
+}
+      {#code_end#}
       <p>
       However this is well defined and working code:
       </p>
-      <pre>{#syntax#}const a: u16 = 0xabcd;
-const b: u8 = @truncate(u8, a);
-// b is now 0xcd{#endsyntax#}</pre>
+      {#code_begin|test|truncate#}
+const std = @import("std");
+const assert = std.debug.assert;
+
+test "integer truncation" {
+    var a: u16 = 0xabcd;
+    var b: u8 = @truncate(u8, a);
+    assert(b == 0xcd);
+}
+      {#code_end#}
       <p>
       This function always truncates the significant bits of the integer, regardless
       of endianness on the target platform.
@@ -9430,8 +9447,6 @@ PrimaryExpr
 
 IfExpr &lt;- IfPrefix Expr (KEYWORD_else Payload? Expr)?
 
-LabeledExpr &lt;- BlockLabel? (Block / LoopExpr)
-
 Block &lt;- LBRACE Statement* RBRACE
 
 LoopExpr &lt;- KEYWORD_inline? (ForExpr / WhileExpr)
@@ -9439,6 +9454,8 @@ LoopExpr &lt;- KEYWORD_inline? (ForExpr / WhileExpr)
 ForExpr &lt;- ForPrefix Expr (KEYWORD_else Expr)?
 
 WhileExpr &lt;- WhilePrefix Expr (KEYWORD_else Payload? Expr)?
+
+CurlySuffixExpr &lt;- TypeExpr InitList?
 
 InitList
     &lt;- LBRACE FieldInit (COMMA FieldInit)* COMMA? RBRACE

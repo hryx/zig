@@ -57,14 +57,6 @@ test "zig fmt: linksection" {
     );
 }
 
-test "zig fmt: shebang line" {
-    try testCanonical(
-        \\#!/usr/bin/env zig
-        \\pub fn main() void {}
-        \\
-    );
-}
-
 test "zig fmt: correctly move doc comments on struct fields" {
     try testTransform(
         \\pub const section_64 = extern struct {
@@ -2125,6 +2117,21 @@ test "zig fmt: error return" {
     );
 }
 
+test "zig fmt: comptime block in container" {
+    try testCanonical(
+        \\pub fn container() type {
+        \\    return struct {
+        \\        comptime {
+        \\            if (false) {
+        \\                unreachable;
+        \\            }
+        \\        }
+        \\    };
+        \\}
+        \\
+    );
+}
+
 const std = @import("std");
 const mem = std.mem;
 const warn = std.debug.warn;
@@ -2137,7 +2144,7 @@ fn testParse(source: []const u8, allocator: *mem.Allocator, anything_changed: *b
     var stderr_file = try io.getStdErr();
     var stderr = &stderr_file.outStream().stream;
 
-    var tree = try std.zig.parse2(allocator, source);
+    const tree = try std.zig.parse(allocator, source);
     defer tree.deinit();
 
     var error_it = tree.errors.iterator(0);
@@ -2170,7 +2177,7 @@ fn testParse(source: []const u8, allocator: *mem.Allocator, anything_changed: *b
     errdefer buffer.deinit();
 
     var buffer_out_stream = io.BufferOutStream.init(&buffer);
-    anything_changed.* = try std.zig.render(allocator, &buffer_out_stream.stream, &tree);
+    anything_changed.* = try std.zig.render(allocator, &buffer_out_stream.stream, tree);
     return buffer.toOwnedSlice();
 }
 
