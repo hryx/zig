@@ -1059,13 +1059,6 @@ fn parseCurlySuffixExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*N
 fn parseInitList(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const lbrace = eatToken(it, .LBrace) orelse return null;
     var init_list = Node.SuffixOp.Op.InitList.init(arena);
-    const node = try arena.create(Node.SuffixOp);
-    node.* = Node.SuffixOp{
-        .base = Node{ .id = .SuffixOp },
-        .lhs = undefined, // set by caller
-        .op = Node.SuffixOp.Op{ .StructInitializer = init_list },
-        .rtoken = undefined, // set below
-    };
 
     if (try parseFieldInit(arena, it, tree)) |field_init| {
         try init_list.push(field_init);
@@ -1081,7 +1074,13 @@ fn parseInitList(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         }
     }
 
-    node.rtoken = try expectToken(it, tree, .RBrace);
+    const node = try arena.create(Node.SuffixOp);
+    node.* = Node.SuffixOp{
+        .base = Node{ .id = .SuffixOp },
+        .lhs = undefined, // set by caller
+        .op = Node.SuffixOp.Op{ .StructInitializer = init_list },
+        .rtoken = try expectToken(it, tree, .RBrace),
+    };
     return &node.base;
 }
 
