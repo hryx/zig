@@ -982,11 +982,12 @@ fn parseLoopExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 // ForExpr <- ForPrefix Expr (KEYWORD_else Expr)?
 fn parseForExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const node = (try parseForPrefix(arena, it, tree)) orelse return null;
+    const for_prefix = node.cast(Node.While).?;
 
     const body_node = try expectNode(arena, it, tree, parseExpr, AstError{
         .ExpectedExpr = AstError.ExpectedExpr{ .token = it.index },
     });
-    node.cast(Node.For).?.body = body_node;
+    for_prefix.body = body_node;
 
     if (eatToken(it, .Keyword_else)) |else_token| {
         const body = try expectNode(arena, it, tree, parseExpr, AstError{
@@ -1001,7 +1002,7 @@ fn parseForExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
             .body = body,
         };
 
-        node.cast(Node.For).?.@"else" = else_node;
+        for_prefix.@"else" = else_node;
     }
 
     return node;
@@ -1010,11 +1011,12 @@ fn parseForExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 // WhileExpr <- WhilePrefix Expr (KEYWORD_else Payload? Expr)?
 fn parseWhileExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const node = (try parseWhilePrefix(arena, it, tree)) orelse return null;
+    const while_prefix = node.cast(Node.While).?;
 
     const body_node = try expectNode(arena, it, tree, parseExpr, AstError{
         .ExpectedExpr = AstError.ExpectedExpr{ .token = it.index },
     });
-    node.cast(Node.For).?.body = body_node;
+    while_prefix.body = body_node;
 
     if (eatToken(it, .Keyword_else)) |else_token| {
         const payload = try parsePayload(arena, it, tree);
@@ -1030,7 +1032,7 @@ fn parseWhileExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
             .body = body,
         };
 
-        node.cast(Node.While).?.@"else" = else_node;
+        while_prefix.@"else" = else_node;
     }
 
     return node;
