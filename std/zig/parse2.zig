@@ -905,6 +905,11 @@ fn parsePrimaryExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node 
         } else unreachable;
         return node;
     }
+    if (label != null) {
+        // Rewind IDENTIFIER and ":"
+        _ = prevToken(it);
+        _ = prevToken(it);
+    }
 
     if (try parseBlock(arena, it, tree)) |node| return node;
     if (try parseCurlySuffixExpr(arena, it, tree)) |node| return node;
