@@ -98,25 +98,25 @@ fn parseContainerMembers(arena: *Allocator, it: *TokenIterator, tree: *Tree, kin
 
         if (try parseTopLevelDecl(arena, it, tree, visibility_token, doc_comments)) |node| {
             try list.push(node);
+            if (try parseAppendedDocComment(arena, it, tree, node.lastToken())) |appended_comment| {
+                if (node.cast(Node.VarDecl)) |var_decl| var_decl.doc_comments = appended_comment;
+            }
             continue;
         }
 
         if (try parseContainerField(arena, it, tree, kind, doc_comments)) |node| {
             if (node.cast(Node.StructField)) |struct_field| struct_field.visib_token = visibility_token;
             try list.push(node);
-            if (eatAnnotatedToken(it, .Comma)) |comma| {
-                if (try parseAppendedDocComment(arena, it, tree, comma.ptr.end)) |appended_comment| {
-                    switch (node.id) {
-                        .StructField => node.cast(Node.StructField).?.doc_comments = appended_comment,
-                        .UnionTag => node.cast(Node.UnionTag).?.doc_comments = appended_comment,
-                        .EnumTag => node.cast(Node.EnumTag).?.doc_comments = appended_comment,
-                        else => unreachable,
-                    }
+            const comma = eatToken(it, .Comma) orelse break;
+            if (try parseAppendedDocComment(arena, it, tree, comma)) |appended_comment| {
+                switch (node.id) {
+                    .StructField => node.cast(Node.StructField).?.doc_comments = appended_comment,
+                    .UnionTag => node.cast(Node.UnionTag).?.doc_comments = appended_comment,
+                    .EnumTag => node.cast(Node.EnumTag).?.doc_comments = appended_comment,
+                    else => unreachable,
                 }
-                continue;
-            } else {
-                break;
             }
+            continue;
         }
 
         // Dangling pub
@@ -2736,10 +2736,9 @@ fn parseDocComment(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node.D
 }
 
 // Eat a single-line doc comment on the same line as another node
-fn parseAppendedDocComment(arena: *Allocator, it: *TokenIterator, tree: *Tree, after_pos: usize) !?*Node.DocComment {
+fn parseAppendedDocComment(arena: *Allocator, it: *TokenIterator, tree: *Tree, after_token: TokenIndex) !?*Node.DocComment {
     const comment_token = eatToken(it, .DocComment) orelse return null;
-    const loc = tree.tokenLocation(after_pos, comment_token);
-    if (loc.line == 0) {
+    if (tree.tokensOnSameLine(after_token, comment_token)) {
         const node = try arena.create(Node.DocComment);
         node.* = Node.DocComment{
             .base = Node{ .id = .DocComment },
@@ -2761,9 +2760,8 @@ fn parsePrefixOpExpr(
     opParseFn: ParseFn,
     childParseFn: ParseFn,
 ) Error!?*Node {
-    const first_op = try opParseFn(arena, it, tree);
-    if (first_op) |node| {
-        var rightmost_op = node;
+    if (try opParseFn(arena, it, tree)) |first_op| {
+        var rightmost_op = first_op;
         while (true) {
             if (try opParseFn(arena, it, tree)) |rhs| {
                 rightmost_op.cast(Node.PrefixOp).?.rhs = rhs;
