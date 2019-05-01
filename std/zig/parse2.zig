@@ -1838,8 +1838,7 @@ fn parseForPrefix(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     _ = try expectToken(it, tree, .RParen);
 
     const payload = try expectNode(arena, it, tree, parsePtrIndexPayload, AstError{
-        // TODO
-        .InvalidToken = AstError.InvalidToken{ .token = it.index },
+        .ExpectedPayload = AstError.ExpectedPayload{ .token = it.index },
     });
 
     const node = try arena.create(Node.For);
@@ -1898,15 +1897,15 @@ fn parsePtrPayload(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 fn parsePtrIndexPayload(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const lpipe = eatToken(it, .Pipe) orelse return null;
     const asterisk = eatToken(it, .Asterisk);
+    const identifier = try expectNode(arena, it, tree, parseIdentifier, AstError{
+        .ExpectedIdentifier = AstError.ExpectedIdentifier{ .token = it.index },
+    });
     const index = blk: {
-        if (eatToken(it, .Asterisk) == null) break :blk null;
+        if (eatToken(it, .Comma) == null) break :blk null;
         break :blk try expectNode(arena, it, tree, parseIdentifier, AstError{
             .ExpectedIdentifier = AstError.ExpectedIdentifier{ .token = it.index },
         });
     };
-    const identifier = try expectNode(arena, it, tree, parseIdentifier, AstError{
-        .ExpectedIdentifier = AstError.ExpectedIdentifier{ .token = it.index },
-    });
     const rpipe = try expectToken(it, tree, .Pipe);
 
     const node = try arena.create(Node.PointerIndexPayload);

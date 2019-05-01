@@ -147,6 +147,7 @@ pub const Error = union(enum) {
     ExpectedToken: ExpectedToken,
     ExpectedCommaOrEnd: ExpectedCommaOrEnd,
     ExpectedParamList: ExpectedParamList,
+    ExpectedPayload: ExpectedPayload,
     ExpectedBlockOrAssignment: ExpectedBlockOrAssignment,
     ExpectedExprOrAssignment: ExpectedExprOrAssignment,
     ExpectedPrefixExpr: ExpectedPrefixExpr, // TODO: lame
@@ -192,6 +193,7 @@ pub const Error = union(enum) {
             @TagType(Error).ExpectedToken => |*x| return x.render(tokens, stream),
             @TagType(Error).ExpectedCommaOrEnd => |*x| return x.render(tokens, stream),
             @TagType(Error).ExpectedParamList => |*x| return x.render(tokens, stream),
+            @TagType(Error).ExpectedPayload => |*x| return x.render(tokens, stream),
             @TagType(Error).ExpectedBlockOrAssignment => |*x| return x.render(tokens, stream),
             @TagType(Error).ExpectedExprOrAssignment => |*x| return x.render(tokens, stream),
             @TagType(Error).ExpectedPrefixExpr => |*x| return x.render(tokens, stream),
@@ -239,6 +241,7 @@ pub const Error = union(enum) {
             @TagType(Error).ExpectedToken => |x| return x.token,
             @TagType(Error).ExpectedCommaOrEnd => |x| return x.token,
             @TagType(Error).ExpectedParamList => |x| return x.token,
+            @TagType(Error).ExpectedPayload => |x| return x.token,
             @TagType(Error).ExpectedBlockOrAssignment => |x| return x.token,
             @TagType(Error).ExpectedExprOrAssignment => |x| return x.token,
             @TagType(Error).ExpectedPrefixExpr => |x| return x.token,
@@ -272,6 +275,7 @@ pub const Error = union(enum) {
     pub const ExpectedExpr = SingleTokenError("Expected expression, found {}");
     pub const ExpectedPrimaryExpr = SingleTokenError("Expected primary expression, found {}");
     pub const ExpectedParamList = SingleTokenError("Expected parameter list, found {}");
+    pub const ExpectedPayload = SingleTokenError("Expected loop payload, found {}");
     pub const ExpectedBlockOrAssignment = SingleTokenError("Expected block or assignment, found {}");
     pub const ExpectedExprOrAssignment = SingleTokenError("Expected expression or assignment, found {}");
     pub const ExpectedPrefixExpr = SingleTokenError("Expected prefix expression, found {}");

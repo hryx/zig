@@ -1725,124 +1725,115 @@ test "zig fmt: blocks" {
     );
 }
 
-test "zig fmt: switch" {
-    try testCanonical(
-        \\test "switch" {
-        \\    switch (0) {
-        \\        0 => {},
-        \\        1 => unreachable,
-        \\        2, 3 => {},
-        \\        4...7 => {},
-        \\        1 + 4 * 3 + 22 => {},
-        \\        else => {
-        \\            const a = 1;
-        \\            const b = a;
-        \\        },
-        \\    }
-        \\
-        \\    const res = switch (0) {
-        \\        0 => 0,
-        \\        1 => 2,
-        \\        1 => a = 4,
-        \\        else => 4,
-        \\    };
-        \\
-        \\    const Union = union(enum) {
-        \\        Int: i64,
-        \\        Float: f64,
-        \\    };
-        \\
-        \\    switch (u) {
-        \\        Union.Int => |int| {},
-        \\        Union.Float => |*float| unreachable,
-        \\    }
-        \\}
-        \\
-    );
-}
+// test "zig fmt: switch" {
+//     try testCanonical(
+//         \\test "switch" {
+//         \\    switch (0) {
+//         \\        0 => {},
+//         \\        1 => unreachable,
+//         \\        2, 3 => {},
+//         \\        4...7 => {},
+//         \\        1 + 4 * 3 + 22 => {},
+//         \\        else => {
+//         \\            const a = 1;
+//         \\            const b = a;
+//         \\        },
+//         \\    }
+//         \\
+//         \\    const res = switch (0) {
+//         \\        0 => 0,
+//         \\        1 => 2,
+//         \\        1 => a = 4,
+//         \\        else => 4,
+//         \\    };
+//         \\
+//         \\    const Union = union(enum) {
+//         \\        Int: i64,
+//         \\        Float: f64,
+//         \\    };
+//         \\
+//         \\    switch (u) {
+//         \\        Union.Int => |int| {},
+//         \\        Union.Float => |*float| unreachable,
+//         \\    }
+//         \\}
+//         \\
+//     );
+// }
 
-test "zig fmt: while" {
-    try testCanonical(
-        \\test "while" {
-        \\    while (10 < 1) unreachable;
-        \\
-        \\    while (10 < 1) unreachable else unreachable;
-        \\
-        \\    while (10 < 1) {
-        \\        unreachable;
-        \\    }
-        \\
-        \\    while (10 < 1)
-        \\        unreachable;
-        \\
-        \\    var i: usize = 0;
-        \\    while (i < 10) : (i += 1) {
-        \\        continue;
-        \\    }
-        \\
-        \\    i = 0;
-        \\    while (i < 10) : (i += 1)
-        \\        continue;
-        \\
-        \\    i = 0;
-        \\    var j: usize = 0;
-        \\    while (i < 10) : ({
-        \\        i += 1;
-        \\        j += 1;
-        \\    }) {
-        \\        continue;
-        \\    }
-        \\
-        \\    var a: ?u8 = 2;
-        \\    while (a) |v| : (a = null) {
-        \\        continue;
-        \\    }
-        \\
-        \\    while (a) |v| : (a = null)
-        \\        unreachable;
-        \\
-        \\    label: while (10 < 0) {
-        \\        unreachable;
-        \\    }
-        \\
-        \\    const res = while (0 < 10) {
-        \\        break 7;
-        \\    } else {
-        \\        unreachable;
-        \\    };
-        \\
-        \\    const res = while (0 < 10)
-        \\        break 7
-        \\    else
-        \\        unreachable;
-        \\
-        \\    var a: anyerror!u8 = 0;
-        \\    while (a) |v| {
-        \\        a = error.Err;
-        \\    } else |err| {
-        \\        i = 1;
-        \\    }
-        \\
-        \\    comptime var k: usize = 0;
-        \\    inline while (i < 10) : (i += 1)
-        \\        j += 2;
-        \\}
-        \\
-    );
-}
+// test "zig fmt: while" {
+//     try testCanonical(
+//         \\test "while" {
+//         \\    while (10 < 1) unreachable;
+//         \\
+//         \\    while (10 < 1) unreachable else unreachable;
+//         \\
+//         \\    while (10 < 1) {
+//         \\        unreachable;
+//         \\    }
+//         \\
+//         \\    while (10 < 1)
+//         \\        unreachable;
+//         \\
+//         \\    var i: usize = 0;
+//         \\    while (i < 10) : (i += 1) {
+//         \\        continue;
+//         \\    }
+//         \\
+//         \\    i = 0;
+//         \\    while (i < 10) : (i += 1)
+//         \\        continue;
+//         \\
+//         \\    i = 0;
+//         \\    var j: usize = 0;
+//         \\    while (i < 10) : ({
+//         \\        i += 1;
+//         \\        j += 1;
+//         \\    }) {
+//         \\        continue;
+//         \\    }
+//         \\
+//         \\    var a: ?u8 = 2;
+//         \\    while (a) |v| : (a = null) {
+//         \\        continue;
+//         \\    }
+//         \\
+//         \\    while (a) |v| : (a = null)
+//         \\        unreachable;
+//         \\
+//         \\    label: while (10 < 0) {
+//         \\        unreachable;
+//         \\    }
+//         \\
+//         \\    const res = while (0 < 10) {
+//         \\        break 7;
+//         \\    } else {
+//         \\        unreachable;
+//         \\    };
+//         \\
+//         \\    const res = while (0 < 10)
+//         \\        break 7
+//         \\    else
+//         \\        unreachable;
+//         \\
+//         \\    var a: anyerror!u8 = 0;
+//         \\    while (a) |v| {
+//         \\        a = error.Err;
+//         \\    } else |err| {
+//         \\        i = 1;
+//         \\    }
+//         \\
+//         \\    comptime var k: usize = 0;
+//         \\    inline while (i < 10) : (i += 1)
+//         \\        j += 2;
+//         \\}
+//         \\
+//     );
+// }
 
 test "zig fmt: for" {
     try testCanonical(
         \\test "for" {
-        \\    for (a) continue;
-        \\
-        \\    for (a)
-        \\        continue;
-        \\
-        \\    for (a) {
-        \\        continue;
-        \\    }
-        \\
         \\    for (a) |v| {
         \\        continue;
         \\    }
