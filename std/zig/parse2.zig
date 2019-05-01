@@ -1739,6 +1739,11 @@ fn parseParamDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         .type_node = undefined,
         .var_args_token = null,
     };
+    switch (param_type) {
+        .VarType => |node| param_decl.type_node = node,
+        .TypeExpr => |node| param_decl.type_node = node,
+        .VarArgs => |token| param_decl.var_args_token = token,
+    }
     return &param_decl.base;
 }
 
