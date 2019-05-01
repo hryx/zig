@@ -1125,9 +1125,14 @@ fn parseSuffixExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
             .ExpectedPrimaryExpr = AstError.ExpectedPrimaryExpr{ .token = it.index },
         });
 
-        while (try parseSuffixOp(arena, it, tree)) |suffix| {
-            suffix.cast(Node.SuffixOp).?.lhs = res;
-            res = suffix;
+        while (try parseSuffixOp(arena, it, tree)) |node| {
+            // TODO: See note below about returning an InfixOp from parseSuffixOp
+            switch (node.id) {
+                .SuffixOp => node.cast(Node.SuffixOp).?.lhs = res,
+                .InfixOp => node.cast(Node.InfixOp).?.lhs = res,
+                else => unreachable,
+            }
+            res = node;
         }
 
         const params = (try parseFnCallArguments(arena, it, tree)) orelse {
