@@ -2194,7 +2194,7 @@ fn parsePrefixOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const node = try arena.create(Node.PrefixOp);
     node.* = Node.PrefixOp{
         .base = Node{ .id = .PrefixOp },
-        .op_token = it.index,
+        .op_token = it.index - 1, // TODO: Figure out why this is off by 1
         .op = op,
         .rhs = undefined,
     };
