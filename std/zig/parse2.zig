@@ -982,7 +982,7 @@ fn parseLoopExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 // ForExpr <- ForPrefix Expr (KEYWORD_else Expr)?
 fn parseForExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const node = (try parseForPrefix(arena, it, tree)) orelse return null;
-    const for_prefix = node.cast(Node.While).?;
+    const for_prefix = node.cast(Node.For).?;
 
     const body_node = try expectNode(arena, it, tree, parseExpr, AstError{
         .ExpectedExpr = AstError.ExpectedExpr{ .token = it.index },
