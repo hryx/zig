@@ -487,11 +487,21 @@ fn parseStatement(arena: *Allocator, it: *TokenIterator, tree: *Tree) Error!?*No
 //     <- IfPrefix BlockExpr ( KEYWORD_else Payload? Statement )?
 //      / IfPrefix AssignExpr ( SEMICOLON / KEYWORD_else Payload? Statement )
 fn parseIfStatement(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
-    const if_node = if (try parseIfPrefix(arena, it, tree)) |node| node.cast(Node.If).? else return null;
+    const if_node = (try parseIfPrefix(arena, it, tree)) orelse return null;
+    const if_prefix = if_node.cast(Node.If).?;
+
     const block_expr = (try parseBlockExpr(arena, it, tree));
     const assign_expr = if (block_expr == null) blk: {
         break :blk (try parseAssignExpr(arena, it, tree)) orelse null;
     } else null;
+
+    if (block_expr == null and assign_expr == null) {
+        try tree.errors.push(AstError{
+            .ExpectedBlockOrAssignment = AstError.ExpectedBlockOrAssignment{ .token = it.index },
+        });
+        return Error.UnexpectedToken;
+    }
+
     const semicolon = if (assign_expr != null) eatToken(it, .Semicolon) else null;
 
     const else_node = if (semicolon != null) blk: {
@@ -513,24 +523,25 @@ fn parseIfStatement(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node 
     } else null;
 
     if (block_expr) |body| {
-        if_node.body = body;
-        if_node.@"else" = else_node;
-        return &if_node.base;
+        if_prefix.body = body;
+        if_prefix.@"else" = else_node;
+        return if_node;
     }
 
     if (assign_expr) |body| {
-        if_node.body = body;
-        if (semicolon != null) return &if_node.base;
+        if_prefix.body = body;
+        if (semicolon != null) return if_node;
         if (else_node != null) {
-            if_node.@"else" = else_node;
-            return &if_node.base;
+            if_prefix.@"else" = else_node;
+            return if_node;
         }
         try tree.errors.push(AstError{
             .ExpectedSemiOrElse = AstError.ExpectedSemiOrElse{ .token = it.index },
         });
+        return Error.UnexpectedToken;
     }
 
-    return null;
+    unreachable;
 }
 
 // LabeledStatement <- BlockLabel? (Block / LoopStatement)
@@ -911,31 +922,7 @@ fn parsePrimaryExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node 
 
 // IfExpr <- IfPrefix Expr (KEYWORD_else Payload? Expr)?
 fn parseIfExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
-    const if_node = (try parseIfPrefix(arena, it, tree)) orelse return null;
-    const expr_node = (try parseExpr(arena, it, tree)) orelse return null;
-
-    const else_node = if (eatToken(it, .Keyword_else)) |else_token| blk: {
-        const payload = try parsePayload(arena, it, tree);
-        const else_expr = try expectNode(arena, it, tree, parseExpr, AstError{
-            .ExpectedExpr = AstError.ExpectedExpr{ .token = it.index },
-        });
-
-        const node = try arena.create(Node.Else);
-        node.* = Node.Else{
-            .base = Node{ .id = .Else },
-            .else_token = else_token,
-            .payload = payload,
-            .body = else_expr,
-        };
-
-        break :blk node;
-    } else null;
-
-    const node = if_node.cast(Node.If).?;
-    node.*.body = expr_node;
-    node.*.@"else" = else_node;
-
-    return &node.base;
+    return parseIf(arena, it, tree, parseExpr);
 }
 
 // Block <- LBRACE Statement* RBRACE
@@ -1327,31 +1314,7 @@ fn parseGroupedExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node 
 
 // IfTypeExpr <- IfPrefix TypeExpr (KEYWORD_else Payload? TypeExpr)?
 fn parseIfTypeExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
-    const node = (try parseIfPrefix(arena, it, tree)) orelse return null;
-    const type_expr = try expectNode(arena, it, tree, parseTypeExpr, AstError{
-        .ExpectedTypeExpr = AstError.ExpectedTypeExpr{ .token = it.index },
-    });
-
-    const if_prefix = node.cast(Node.If).?;
-    if_prefix.body = type_expr;
-
-    if (eatToken(it, .Keyword_else)) |else_token| {
-        const payload = (try parsePayload(arena, it, tree)) orelse return null;
-        const else_body = try expectNode(arena, it, tree, parseTypeExpr, AstError{
-            .ExpectedTypeExpr = AstError.ExpectedTypeExpr{ .token = it.index },
-        });
-
-        const else_node = try arena.create(Node.Else);
-        else_node.* = Node.Else{
-            .base = Node{ .id = .Else },
-            .else_token = else_token,
-            .payload = payload,
-            .body = else_body,
-        };
-        if_prefix.@"else" = else_node;
-    }
-
-    return node;
+    return parseIf(arena, it, tree, parseTypeExpr);
 }
 
 // LabeledTypeExpr
@@ -2763,6 +2726,32 @@ fn parseUse(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         .semicolon_token = undefined,
     };
     return &node.base;
+}
+
+// IfPrefix Body (KEYWORD_else Payload? Body)?
+fn parseIf(arena: *Allocator, it: *TokenIterator, tree: *Tree, bodyParseFn: ParseFn) !?*Node {
+    const node = (try parseIfPrefix(arena, it, tree)) orelse return null;
+    const if_prefix = node.cast(Node.If).?;
+
+    if_prefix.body = try expectNode(arena, it, tree, bodyParseFn, AstError{
+        .InvalidToken = AstError.InvalidToken{ .token = it.index },
+    });
+
+    const else_token = eatToken(it, .Keyword_else) orelse return node;
+    const payload = try parsePayload(arena, it, tree);
+    const else_expr = try expectNode(arena, it, tree, parseExpr, AstError{
+        .ExpectedExpr = AstError.ExpectedExpr{ .token = it.index },
+    });
+    const else_node = try arena.create(Node.Else);
+    else_node.* = Node.Else{
+        .base = Node{ .id = .Else },
+        .else_token = else_token,
+        .payload = payload,
+        .body = else_expr,
+    };
+    if_prefix.@"else" = else_node;
+
+    return node;
 }
 
 // Eat a multiline doc comment
