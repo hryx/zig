@@ -244,18 +244,10 @@ fn parseFnProto(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const section_expr = try parseLinkSection(arena, it, tree);
     const exclamation_token = eatToken(it, .Bang);
 
-    const return_type_expr = blk: {
-        if (eatToken(it, .Keyword_var)) |var_token| {
-            const node = try arena.create(Node.VarType);
-            node.* = Node.VarType{
-                .base = Node{ .id = .VarType },
-                .token = var_token,
-            };
-        }
-        break :blk try expectNode(arena, it, tree, parseTypeExpr, AstError{
-            .ExpectedReturnType = AstError.ExpectedReturnType{ .token = it.index },
-        });
-    };
+    const return_type_expr = (try parseVarType(arena, it, tree)) orelse
+        try expectNode(arena, it, tree, parseTypeExpr, AstError{
+        .ExpectedReturnType = AstError.ExpectedReturnType{ .token = it.index },
+    });
 
     // TODO: Based on this rule, `!var` is an acceptable return type, but there is no usage
     // or coverage of that yet. The grammar also does not include `Keyword_var` as a choice
@@ -1234,6 +1226,7 @@ fn parsePrimaryTypeExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*N
     if (try parseFnProto(arena, it, tree)) |node| return node;
     if (try parseGroupedExpr(arena, it, tree)) |node| return node;
     if (try parseLabeledTypeExpr(arena, it, tree)) |node| return node;
+    if (try parseVarType(arena, it, tree)) |node| return node; // TODO: missing from the grammar
     if (try parseIdentifier(arena, it, tree)) |node| return node;
     if (try parseIfTypeExpr(arena, it, tree)) |node| return node;
     if (try parseIntegerLiteral(arena, it, tree)) |node| return node;
@@ -1769,14 +1762,7 @@ fn parseParamDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 //      / DOT3
 //      / TypeExpr
 fn parseParamType(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?ParamType {
-    if (eatToken(it, .Keyword_var)) |token| {
-        const node = try arena.create(Node.VarType);
-        node.* = Node.VarType{
-            .base = Node{ .id = .VarType },
-            .token = token,
-        };
-        return ParamType{ .VarType = &node.base };
-    }
+    if (try parseVarType(arena, it, tree)) |node| return ParamType{ .VarType = node };
     if (eatToken(it, .Ellipsis3)) |token| return ParamType{ .VarArgs = token };
     if (try parseTypeExpr(arena, it, tree)) |node| return ParamType{ .TypeExpr = node };
     return null;
@@ -2681,6 +2667,16 @@ fn parseIdentifier(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const node = try arena.create(Node.Identifier);
     node.* = Node.Identifier{
         .base = Node{ .id = .Identifier },
+        .token = token,
+    };
+    return &node.base;
+}
+
+fn parseVarType(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
+    const token = eatToken(it, .Keyword_var) orelse return null;
+    const node = try arena.create(Node.VarType);
+    node.* = Node.VarType{
+        .base = Node{ .id = .VarType },
         .token = token,
     };
     return &node.base;
