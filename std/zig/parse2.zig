@@ -11,7 +11,7 @@ const TokenIterator = Tree.TokenList.Iterator;
 
 pub const Error = error{UnexpectedToken} || Allocator.Error;
 
-pub fn parse(allocator: *Allocator, source: []const u8) !Tree {
+pub fn parse(allocator: *Allocator, source: []const u8) !*Tree {
     var tree_arena = std.heap.ArenaAllocator.init(allocator);
     errdefer tree_arena.deinit();
     const arena = &tree_arena.allocator;
@@ -27,7 +27,8 @@ pub fn parse(allocator: *Allocator, source: []const u8) !Tree {
 
     while (it.peek().?.id == .LineComment) _ = it.next();
 
-    var tree = Tree{
+    const tree = try arena.create(Tree);
+    tree.* = Tree{
         .source = source,
         .root_node = undefined,
         .tokens = token_list,
@@ -35,7 +36,7 @@ pub fn parse(allocator: *Allocator, source: []const u8) !Tree {
         .arena_allocator = tree_arena,
     };
 
-    tree.root_node = parseRoot(&tree.arena_allocator.allocator, &it, &tree) catch |err| {
+    tree.root_node = parseRoot(&tree.arena_allocator.allocator, &it, tree) catch |err| {
         return switch (err) {
             Error.UnexpectedToken => tree,
             else => err,
@@ -56,7 +57,6 @@ fn parseRoot(arena: *Allocator, it: *TokenIterator, tree: *Tree) !*Node.Root {
         //       ignore the problem and assume that there will be no container-level
         //       doc comments.
         .doc_comments = null,
-        .shebang = null,
         .eof_token = undefined,
     };
     node.decls = (try parseContainerMembers(arena, it, tree, .Keyword_struct)) orelse return node;
