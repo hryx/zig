@@ -504,7 +504,7 @@ fn parseIfStatement(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node 
 
     const semicolon = if (assign_expr != null) eatToken(it, .Semicolon) else null;
 
-    const else_node = if (semicolon != null) blk: {
+    const else_node = if (semicolon == null) blk: {
         const else_token = eatToken(it, .Keyword_else) orelse break :blk null;
         const payload = try parsePayload(arena, it, tree);
         const else_body = try expectNode(arena, it, tree, parseStatement, AstError{
