@@ -1280,7 +1280,11 @@ fn parseContainerDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Nod
 // ErrorSetDecl <- KEYWORD_error LBRACE IdentifierList RBRACE
 fn parseErrorSetDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const error_token = eatToken(it, .Keyword_error) orelse return null;
-    _ = try expectToken(it, tree, .LBrace);
+    if (eatToken(it, .LBrace) == null) {
+        // TODO: Check the order of choices that leads to this not being "expectToken"
+        _ = prevToken(it);
+        return null;
+    }
     const decls = try parseErrorTagList(arena, it, tree);
     const rbrace = try expectToken(it, tree, .RBrace);
 
