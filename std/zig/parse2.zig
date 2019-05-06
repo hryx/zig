@@ -2530,6 +2530,8 @@ fn parseContainerDeclType(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?
                         _ = try expectToken(it, tree, .RParen);
                         break :blk Node.ContainerDecl.InitArg{ .Enum = expr };
                     }
+                    _ = try expectToken(it, tree, .RParen);
+                    break :blk Node.ContainerDecl.InitArg{ .Enum = null };
                 }
                 const expr = try expectNode(arena, it, tree, parseExpr, AstError{
                     .ExpectedExpr = AstError.ExpectedExpr{ .token = it.index },
