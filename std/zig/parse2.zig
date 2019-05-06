@@ -2724,7 +2724,7 @@ fn parseUse(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const token = eatToken(it, .Keyword_use) orelse return null;
     const node = try arena.create(Node.Use);
     node.* = Node.Use{
-        .base = Node{ .id = .PrefixOp },
+        .base = Node{ .id = .Use },
         .doc_comments = null,
         .visib_token = null,
         .use_token = token,
