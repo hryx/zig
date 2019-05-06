@@ -383,7 +383,7 @@ fn parseContainerField(arena: *Allocator, it: *TokenIterator, tree: *Tree, kind:
                 .base = Node{ .id = .UnionTag },
                 .doc_comments = doc_comments,
                 .name_token = name_token,
-                .type_expr = type_expr orelse undefined,
+                .type_expr = type_expr,
                 .value_expr = default_value,
             };
             return &node.base;
@@ -2526,6 +2526,7 @@ fn parseContainerDeclType(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?
                         const expr = try expectNode(arena, it, tree, parseExpr, AstError{
                             .ExpectedExpr = AstError.ExpectedExpr{ .token = it.index },
                         });
+                        _ = try expectToken(it, tree, .RParen);
                         _ = try expectToken(it, tree, .RParen);
                         break :blk Node.ContainerDecl.InitArg{ .Enum = expr };
                     }
