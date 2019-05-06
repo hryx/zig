@@ -59,7 +59,7 @@ fn parseRoot(arena: *Allocator, it: *TokenIterator, tree: *Tree) !*Node.Root {
         .doc_comments = null,
         .eof_token = undefined,
     };
-    node.decls = (try parseContainerMembers(arena, it, tree, .Keyword_struct)) orelse return node;
+    node.decls = try parseContainerMembers(arena, it, tree, .Keyword_struct);
     node.eof_token = eatToken(it, .Eof) orelse {
         try tree.errors.push(AstError{
             .ExpectedContainerMembers = AstError.ExpectedContainerMembers{ .token = it.index },
@@ -76,7 +76,7 @@ fn parseRoot(arena: *Allocator, it: *TokenIterator, tree: *Tree) !*Node.Root {
 //      / KEYWORD_pub? ContainerField COMMA ContainerMembers
 //      / KEYWORD_pub? ContainerField
 //      /
-fn parseContainerMembers(arena: *Allocator, it: *TokenIterator, tree: *Tree, kind: Token.Id) !?Node.Root.DeclList {
+fn parseContainerMembers(arena: *Allocator, it: *TokenIterator, tree: *Tree, kind: Token.Id) !Node.Root.DeclList {
     var list = Node.Root.DeclList.init(arena);
 
     while (true) {
@@ -124,7 +124,6 @@ fn parseContainerMembers(arena: *Allocator, it: *TokenIterator, tree: *Tree, kin
             try tree.errors.push(AstError{
                 .ExpectedPubItem = AstError.ExpectedPubItem{ .token = it.index },
             });
-            return null;
         }
 
         break;
@@ -2490,7 +2489,7 @@ fn parseContainerDeclAuto(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?
     const node = (try parseContainerDeclType(arena, it, tree)) orelse return null;
     const lbrace = try expectToken(it, tree, .LBrace);
     const kind = it.list.at(node.cast(Node.ContainerDecl).?.kind_token).id;
-    const members = (try parseContainerMembers(arena, it, tree, kind)) orelse return null;
+    const members = try parseContainerMembers(arena, it, tree, kind);
     const rbrace = try expectToken(it, tree, .RBrace);
 
     const decl_type = node.cast(Node.ContainerDecl).?;
