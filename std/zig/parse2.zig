@@ -2192,13 +2192,23 @@ fn parsePrefixTypeOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node
         return &node.base;
     }
 
+    // TODO: Returning a PromiseType instead of PrefixOp makes casting and setting .rhs or
+    //       .return_type more difficult for the caller (see parsePrefixOpExpr helper).
+    //       Consider making the PromiseType a member of PrefixOp and add a
+    //       PrefixOp.PromiseType variant?
     if (eatToken(it, .Keyword_promise)) |token| {
-        const arrow = try expectToken(it, tree, .Arrow);
+        const arrow = eatToken(it, .Arrow) orelse {
+            _ = prevToken(it);
+            return null;
+        };
         const node = try arena.create(Node.PromiseType);
         node.* = Node.PromiseType{
             .base = Node{ .id = .PromiseType },
             .promise_token = token,
-            .result = null,
+            .result = Node.PromiseType.Result{
+                .arrow_token = arrow,
+                .return_type = undefined, // set by caller
+            },
         };
         return &node.base;
     }
@@ -2803,22 +2813,49 @@ fn parsePrefixOpExpr(
     childParseFn: ParseFn,
 ) Error!?*Node {
     if (try opParseFn(arena, it, tree)) |first_op| {
-        var rightmost_op = first_op.cast(Node.PrefixOp).?;
+        var rightmost_op = first_op;
         while (true) {
-            // If the token encountered was **, there will be two nodes
-            if (tree.tokens.at(rightmost_op.op_token).id == .AsteriskAsterisk)
-                rightmost_op = rightmost_op.rhs.cast(Node.PrefixOp).?;
-
-            if (try opParseFn(arena, it, tree)) |rhs| {
-                rightmost_op.rhs = rhs;
-                rightmost_op = rhs.cast(Node.PrefixOp).?;
-            } else break;
+            switch (rightmost_op.id) {
+                .PrefixOp => {
+                    var prefix_op = rightmost_op.cast(Node.PrefixOp).?;
+                    // If the token encountered was **, there will be two nodes
+                    if (tree.tokens.at(prefix_op.op_token).id == .AsteriskAsterisk) {
+                        rightmost_op = prefix_op.rhs;
+                        prefix_op = rightmost_op.cast(Node.PrefixOp).?;
+                    }
+                    if (try opParseFn(arena, it, tree)) |rhs| {
+                        prefix_op.rhs = rhs;
+                        rightmost_op = rhs;
+                    } else break;
+                },
+                .PromiseType => {
+                    const prom = rightmost_op.cast(Node.PromiseType).?;
+                    if (try opParseFn(arena, it, tree)) |rhs| {
+                        prom.result.?.return_type = rhs;
+                        rightmost_op = rhs;
+                    } else break;
+                },
+                else => unreachable,
+            }
         }
 
         // If any prefix op existed, a child node on the RHS is required
-        rightmost_op.rhs = try expectNode(arena, it, tree, childParseFn, AstError{
-            .InvalidToken = AstError.InvalidToken{ .token = it.index },
-        });
+        switch (rightmost_op.id) {
+            .PrefixOp => {
+                const prefix_op = rightmost_op.cast(Node.PrefixOp).?;
+                prefix_op.rhs = try expectNode(arena, it, tree, childParseFn, AstError{
+                    .InvalidToken = AstError.InvalidToken{ .token = it.index },
+                });
+            },
+            .PromiseType => {
+                const prom = rightmost_op.cast(Node.PromiseType).?;
+                prom.result.?.return_type = try expectNode(arena, it, tree, childParseFn, AstError{
+                    .InvalidToken = AstError.InvalidToken{ .token = it.index },
+                });
+            },
+            else => unreachable,
+        }
+
         return first_op;
     }
 
