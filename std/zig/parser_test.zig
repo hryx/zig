@@ -1441,7 +1441,7 @@ test "zig fmt: precedence" {
 test "zig fmt: prefix operators" {
     try testCanonical(
         \\test "prefix operators" {
-        \\    try return --%~!*&0;
+        \\    try return --%~!&0;
         \\}
         \\
     );
