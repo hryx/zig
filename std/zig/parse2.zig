@@ -175,17 +175,23 @@ fn parseTopLevelComptime(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*
 //      / (KEYWORD_export / KEYWORD_extern STRINGLITERAL?)? KEYWORD_threadlocal? VarDecl
 //      / KEYWORD_use Expr SEMICOLON
 fn parseTopLevelDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree, vis: ?TokenIndex, doc_comments: ?*Node.DocComment) !?*Node {
-    const export_token = eatToken(it, .Keyword_export);
-    const extern_token = if (export_token == null) eatToken(it, .Keyword_extern) else null;
-    const lib_name = if (extern_token != null) try parseStringLiteral(arena, it, tree) else null;
-    const inline_token = if (extern_token == null) eatToken(it, .Keyword_inline) else null;
+    var lib_name: ?*Node = null;
+    const extern_export_token = blk: {
+        if (eatToken(it, .Keyword_export)) |token| break :blk token;
+        if (eatToken(it, .Keyword_extern)) |token| {
+            lib_name = try parseStringLiteral(arena, it, tree);
+            break :blk token;
+        }
+        if (eatToken(it, .Keyword_inline)) |token| break :blk token;
+        break :blk null;
+    };
 
     if (try parseFnProto(arena, it, tree)) |node| {
         const fn_node = node.cast(Node.FnProto).?;
 
         fn_node.*.doc_comments = doc_comments;
         fn_node.*.visib_token = vis;
-        fn_node.*.extern_export_inline_token = extern_token orelse export_token orelse inline_token;
+        fn_node.*.extern_export_inline_token = extern_export_token;
         fn_node.*.lib_name = lib_name;
 
         if (eatToken(it, .Semicolon)) |_| return node;
@@ -200,7 +206,12 @@ fn parseTopLevelDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree, vis: ?T
         return null;
     }
 
-    if (inline_token != null) return null;
+    if (extern_export_token) |token| {
+        if (tree.tokens.at(token).id == .Keyword_inline) {
+            _ = prevToken(it); // rewind "inline"
+            return null;
+        }
+    }
 
     const thread_local_token = eatToken(it, .Keyword_threadlocal);
 
@@ -210,9 +221,23 @@ fn parseTopLevelDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree, vis: ?T
         var_decl.*.visib_token = vis;
         var_decl.*.thread_local_token = thread_local_token;
         var_decl.*.comptime_token = null;
-        var_decl.*.extern_export_token = extern_token orelse export_token;
+        var_decl.*.extern_export_token = extern_export_token;
         var_decl.*.lib_name = lib_name;
         return node;
+    }
+
+    if (thread_local_token != null) {
+        try tree.errors.push(AstError{
+            .ExpectedVarDecl = AstError.ExpectedVarDecl{ .token = it.index },
+        });
+        return Error.UnexpectedToken;
+    }
+
+    if (extern_export_token != null) {
+        if (lib_name != null)
+            _ = prevToken(it); // rewind STRINGLITERAL
+        _ = prevToken(it); // rewind "export" / "extern" / "inline"
+        return null;
     }
 
     const use_node = (try parseUse(arena, it, tree)) orelse return null;
@@ -728,8 +753,7 @@ fn parseBlockExprStatement(arena: *Allocator, it: *TokenIterator, tree: *Tree) !
 fn parseBlockExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) Error!?*Node {
     const label_token = parseBlockLabel(arena, it, tree);
     const block_node = (try parseBlock(arena, it, tree)) orelse {
-        // Rewind BlockLabel
-        if (label_token != null) _ = prevToken(it);
+        if (label_token != null) _ = prevToken(it); // rewind BlockLabel
         return null;
     };
     block_node.cast(Node.Block).?.label = label_token;
@@ -908,9 +932,8 @@ fn parsePrimaryExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node 
         return node;
     }
     if (label != null) {
-        // Rewind IDENTIFIER and ":"
-        _ = prevToken(it);
-        _ = prevToken(it);
+        _ = prevToken(it); // rewind IDENTIFIER
+        _ = prevToken(it); // rewind ":"
     }
 
     if (try parseBlock(arena, it, tree)) |node| return node;
@@ -1271,7 +1294,11 @@ fn parseContainerDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Nod
     const layout_token = eatToken(it, .Keyword_extern) orelse
         eatToken(it, .Keyword_packed);
 
-    const node = (try parseContainerDeclAuto(arena, it, tree)) orelse return null;
+    const node = (try parseContainerDeclAuto(arena, it, tree)) orelse {
+        if (layout_token != null)
+            _ = prevToken(it); // rewind "extern" / "packed"
+        return null;
+    };
     node.cast(Node.ContainerDecl).?.*.layout_token = layout_token;
     return node;
 }
@@ -1343,9 +1370,8 @@ fn parseLabeledTypeExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*N
     }
 
     if (label != null) {
-        // Rewind IDENTIFIER and ":"
-        _ = prevToken(it);
-        _ = prevToken(it);
+        _ = prevToken(it); // rewind IDENTIFIER
+        _ = prevToken(it); // rewind ":"
     }
     return null;
 }
@@ -1601,8 +1627,7 @@ fn parseBreakLabel(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 fn parseBlockLabel(arena: *Allocator, it: *TokenIterator, tree: *Tree) ?TokenIndex {
     const token = eatToken(it, .Identifier) orelse return null;
     if (eatToken(it, .Colon) != null) return token;
-    // Rewind IDENTIFIER
-    _ = prevToken(it);
+    _ = prevToken(it); // rewind IDENTIFIER
     return null;
 }
 
@@ -2799,8 +2824,7 @@ fn parseAppendedDocComment(arena: *Allocator, it: *TokenIterator, tree: *Tree, a
         try node.lines.push(comment_token);
         return node;
     }
-    // No doc comment; rewind
-    prevToken(it);
+    prevToken(it); // rewind whatever was not a doc comment
     return null;
 }
 
