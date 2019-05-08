@@ -35,19 +35,12 @@ pub fn parse(allocator: *Allocator, source: []const u8) !*Tree {
         .errors = Tree.ErrorList.init(arena),
         .arena_allocator = tree_arena,
     };
-
-    tree.root_node = parseRoot(&tree.arena_allocator.allocator, &it, tree) catch |err| {
-        return switch (err) {
-            Error.UnexpectedToken => tree,
-            else => err,
-        };
-    };
-
+    tree.root_node = try parseRoot(&tree.arena_allocator.allocator, &it, tree);
     return tree;
 }
 
 // Root <- skip ContainerMembers eof
-fn parseRoot(arena: *Allocator, it: *TokenIterator, tree: *Tree) !*Node.Root {
+fn parseRoot(arena: *Allocator, it: *TokenIterator, tree: *Tree) Allocator.Error!*Node.Root {
     const node = try arena.create(Node.Root);
     node.* = Node.Root{
         .base = Node{ .id = .Root },
@@ -59,7 +52,17 @@ fn parseRoot(arena: *Allocator, it: *TokenIterator, tree: *Tree) !*Node.Root {
         .doc_comments = null,
         .eof_token = undefined,
     };
-    node.decls = try parseContainerMembers(arena, it, tree, .Keyword_struct);
+    node.decls = parseContainerMembers(arena, it, tree, .Keyword_struct) catch |err| {
+        // TODO: Switch on the error type
+        // https://github.com/ziglang/zig/issues/2203
+        // return switch (err) {
+        //     Allocator.Error => |e| e,
+        //     Error.UnexpectedToken => tree,
+        // };
+        if (err == Error.UnexpectedToken) return node;
+        assert(err == Allocator.Error.OutOfMemory);
+        return Allocator.Error.OutOfMemory;
+    };
     node.eof_token = eatToken(it, .Eof) orelse {
         try tree.errors.push(AstError{
             .ExpectedContainerMembers = AstError.ExpectedContainerMembers{ .token = it.index },
