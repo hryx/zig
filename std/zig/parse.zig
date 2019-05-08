@@ -1500,9 +1500,9 @@ fn parseAsmExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         .asm_token = asm_token,
         .volatile_token = volatile_token,
         .template = template,
-        .outputs = undefined,
-        .inputs = undefined,
-        .clobbers = undefined,
+        .outputs = Node.Asm.OutputList.init(arena),
+        .inputs = Node.Asm.InputList.init(arena),
+        .clobbers = Node.Asm.ClobberList.init(arena),
         .rparen = undefined,
     };
 
