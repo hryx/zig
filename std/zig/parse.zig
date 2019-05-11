@@ -14,30 +14,41 @@ pub const Error = error{UnexpectedToken} || Allocator.Error;
 /// Result should be freed with tree.deinit() when there are
 /// no more references to any of the tokens or nodes.
 pub fn parse(allocator: *Allocator, source: []const u8) !*Tree {
-    var tree_arena = std.heap.ArenaAllocator.init(allocator);
-    errdefer tree_arena.deinit();
-    const arena = &tree_arena.allocator;
+    const tree = blk: {
+        // This block looks unnecessary, but is a "foot-shield" to prevent the SegmentedLists
+        // from being initialized with a pointer to this `arena`, which is created on
+        // the stack. Following code should instead refer to `&tree.arena_allocator`, a
+        // pointer to data which lives safely on the heap and will outlive `parse`. See:
+        // https://github.com/ziglang/zig/commit/cb4fb14b6e66bd213575f69eec9598be8394fae6
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        errdefer arena.deinit();
+        const tree = try arena.allocator.create(ast.Tree);
+        tree.* = ast.Tree{
+            .source = source,
+            .root_node = undefined,
+            .arena_allocator = arena,
+            .tokens = undefined,
+            .errors = undefined,
+        };
+        break :blk tree;
+    };
+    errdefer tree.deinit();
+    const arena = &tree.arena_allocator.allocator;
 
-    var token_list = Tree.TokenList.init(arena);
+    tree.tokens = ast.Tree.TokenList.init(arena);
+    tree.errors = ast.Tree.ErrorList.init(arena);
+
     var tokenizer = std.zig.Tokenizer.init(source);
     while (true) {
-        const tree_token = try token_list.addOne();
+        const tree_token = try tree.tokens.addOne();
         tree_token.* = tokenizer.next();
         if (tree_token.id == .Eof) break;
     }
-    var it = token_list.iterator(0);
+    var it = tree.tokens.iterator(0);
 
     while (it.peek().?.id == .LineComment) _ = it.next();
 
-    const tree = try arena.create(Tree);
-    tree.* = Tree{
-        .source = source,
-        .root_node = undefined,
-        .tokens = token_list,
-        .errors = Tree.ErrorList.init(arena),
-        .arena_allocator = tree_arena,
-    };
-    tree.root_node = try parseRoot(&tree.arena_allocator.allocator, &it, tree);
+    tree.root_node = try parseRoot(arena, &it, tree);
     return tree;
 }
 
