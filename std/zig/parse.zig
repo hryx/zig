@@ -11,6 +11,8 @@ const TokenIterator = Tree.TokenList.Iterator;
 
 pub const Error = error{UnexpectedToken} || Allocator.Error;
 
+/// Result should be freed with tree.deinit() when there are
+/// no more references to any of the tokens or nodes.
 pub fn parse(allocator: *Allocator, source: []const u8) !*Tree {
     var tree_arena = std.heap.ArenaAllocator.init(allocator);
     errdefer tree_arena.deinit();
@@ -45,20 +47,18 @@ fn parseRoot(arena: *Allocator, it: *TokenIterator, tree: *Tree) Allocator.Error
     node.* = Node.Root{
         .base = Node{ .id = .Root },
         .decls = undefined,
-        // TODO: File an issue: Currently it is impossible to have a container-level
+        // TODO: Because zig fmt collapses consecutive comments separated by blank lines into
+        //       a single multi-line comment, it is currently impossible to have a container-level
         //       doc comment and NO doc comment on the first decl. For now, simply
         //       ignore the problem and assume that there will be no container-level
         //       doc comments.
+        //       See: https://github.com/ziglang/zig/issues/2288
         .doc_comments = null,
         .eof_token = undefined,
     };
     node.decls = parseContainerMembers(arena, it, tree, .Keyword_struct) catch |err| {
         // TODO: Switch on the error type
-        // https://github.com/ziglang/zig/issues/2203
-        // return switch (err) {
-        //     Allocator.Error => |e| e,
-        //     Error.UnexpectedToken => tree,
-        // };
+        // https://github.com/ziglang/zig/issues/2473
         if (err == Error.UnexpectedToken) return node;
         assert(err == Allocator.Error.OutOfMemory);
         return Allocator.Error.OutOfMemory;
@@ -376,22 +376,19 @@ fn parseVarDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 fn parseContainerField(arena: *Allocator, it: *TokenIterator, tree: *Tree, kind: Token.Id, doc_comments: ?*Node.DocComment) !?*Node {
     const name_token = eatToken(it, .Identifier) orelse return null;
 
-    const type_expr = blk: {
-        if (eatToken(it, .Colon)) |_| {
-            break :blk try expectNode(arena, it, tree, parseTypeExpr, AstError{
-                .ExpectedTypeExpr = AstError.ExpectedTypeExpr{ .token = it.index },
-            });
-        } else break :blk null;
-    };
+    const type_expr = if (eatToken(it, .Colon)) |_|
+        try expectNode(arena, it, tree, parseTypeExpr, AstError{
+            .ExpectedTypeExpr = AstError.ExpectedTypeExpr{ .token = it.index },
+        })
+    else
+        null;
 
-    // TODO: supply default value to struct field when ast.Node.StructField supports it
-    const default_value = blk: {
-        if (eatToken(it, .Equal)) |_| {
-            break :blk try expectNode(arena, it, tree, parseExpr, AstError{
-                .ExpectedExpr = AstError.ExpectedExpr{ .token = it.index },
-            });
-        } else break :blk null;
-    };
+    const default_value = if (eatToken(it, .Equal)) |_|
+        try expectNode(arena, it, tree, parseExpr, AstError{
+            .ExpectedExpr = AstError.ExpectedExpr{ .token = it.index },
+        })
+    else
+        null;
 
     switch (kind) {
         .Keyword_struct => {
@@ -965,7 +962,7 @@ fn parseBlock(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const block_node = try arena.create(Node.Block);
     block_node.* = Node.Block{
         .base = Node{ .id = .Block },
-        .label = null, // set by caller
+        .label = null,
         .lbrace = lbrace,
         .statements = statements,
         .rbrace = rbrace,
@@ -1894,12 +1891,14 @@ fn parsePtrIndexPayload(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*N
     const identifier = try expectNode(arena, it, tree, parseIdentifier, AstError{
         .ExpectedIdentifier = AstError.ExpectedIdentifier{ .token = it.index },
     });
-    const index = blk: {
-        if (eatToken(it, .Comma) == null) break :blk null;
-        break :blk try expectNode(arena, it, tree, parseIdentifier, AstError{
+
+    const index = if (eatToken(it, .Comma) == null)
+        null
+    else
+        try expectNode(arena, it, tree, parseIdentifier, AstError{
             .ExpectedIdentifier = AstError.ExpectedIdentifier{ .token = it.index },
         });
-    };
+
     const rpipe = try expectToken(it, tree, .Pipe);
 
     const node = try arena.create(Node.PointerIndexPayload);
@@ -2187,7 +2186,7 @@ fn parsePrefixOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const node = try arena.create(Node.PrefixOp);
     node.* = Node.PrefixOp{
         .base = Node{ .id = .PrefixOp },
-        .op_token = it.index - 1, // TODO: Figure out why this is off by 1
+        .op_token = token.index,
         .op = op,
         .rhs = undefined,
     };
@@ -2340,31 +2339,34 @@ fn parsePrefixTypeOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node
 //      / DOTASTERISK
 //      / DOTQUESTIONMARK
 fn parseSuffixOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
-    // TODO: This would be nicer with anonymous structs so that we could
-    // use a const instead of a var. The below would become:
-    // const op_and_token = blk: { ...
-    var rtoken: TokenIndex = undefined;
-
     const Op = Node.SuffixOp.Op;
-    const op = blk: {
+    const OpAndToken = struct {
+        op: Node.SuffixOp.Op,
+        token: TokenIndex,
+    };
+    const op_and_token = blk: {
         if (eatToken(it, .LBracket)) |_| {
             const index_expr = try expectNode(arena, it, tree, parseExpr, AstError{
                 .ExpectedExpr = AstError.ExpectedExpr{ .token = it.index },
             });
 
-            if (eatToken(it, .Ellipsis2)) |dots| {
+            if (eatToken(it, .Ellipsis2) != null) {
                 const end_expr = try parseExpr(arena, it, tree);
-                rtoken = try expectToken(it, tree, .RBracket);
-                break :blk Op{
-                    .Slice = Op.Slice{
-                        .start = index_expr,
-                        .end = end_expr,
+                break :blk OpAndToken{
+                    .op = Op{
+                        .Slice = Op.Slice{
+                            .start = index_expr,
+                            .end = end_expr,
+                        },
                     },
+                    .token = try expectToken(it, tree, .RBracket),
                 };
             }
 
-            rtoken = try expectToken(it, tree, .RBracket);
-            break :blk Op{ .ArrayAccess = index_expr };
+            break :blk OpAndToken{
+                .op = Op{ .ArrayAccess = index_expr },
+                .token = try expectToken(it, tree, .RBracket),
+            };
         }
 
         if (eatToken(it, .Period)) |period| {
@@ -2383,12 +2385,10 @@ fn parseSuffixOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
                 return &node.base;
             }
             if (eatToken(it, .Asterisk)) |asterisk| {
-                rtoken = asterisk;
-                break :blk Op{ .Deref = {} };
+                break :blk OpAndToken{ .op = Op{ .Deref = {} }, .token = asterisk };
             }
             if (eatToken(it, .QuestionMark)) |question_mark| {
-                rtoken = question_mark;
-                break :blk Op{ .UnwrapOptional = {} };
+                break :blk OpAndToken{ .op = Op{ .UnwrapOptional = {} }, .token = question_mark };
             }
             try tree.errors.push(AstError{
                 .ExpectedSuffixOp = AstError.ExpectedSuffixOp{ .token = it.index },
@@ -2403,8 +2403,8 @@ fn parseSuffixOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     node.* = Node.SuffixOp{
         .base = Node{ .id = .SuffixOp },
         .lhs = undefined, // set by caller
-        .op = op,
-        .rtoken = rtoken,
+        .op = op_and_token.op,
+        .rtoken = op_and_token.token,
     };
     return &node.base;
 }

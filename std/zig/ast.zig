@@ -150,7 +150,7 @@ pub const Error = union(enum) {
     ExpectedPayload: ExpectedPayload,
     ExpectedBlockOrAssignment: ExpectedBlockOrAssignment,
     ExpectedExprOrAssignment: ExpectedExprOrAssignment,
-    ExpectedPrefixExpr: ExpectedPrefixExpr, // TODO: lame
+    ExpectedPrefixExpr: ExpectedPrefixExpr,
     ExpectedLoopExpr: ExpectedLoopExpr,
     ExpectedDerefOrUnwrap: ExpectedDerefOrUnwrap,
     ExpectedSuffixOp: ExpectedSuffixOp,
