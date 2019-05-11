@@ -358,7 +358,7 @@ fn parseVarDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         .visib_token = null,
         .thread_local_token = null,
         .name_token = name_token,
-        .eq_token = eq_token orelse 0,
+        .eq_token = eq_token orelse undefined,
         .mut_token = mut_token,
         .comptime_token = null,
         .extern_export_token = null,
