@@ -12,6 +12,21 @@ test "zig fmt: enum literal" {
     );
 }
 
+test "zig fmt: enum literal inside array literal" {
+    try testCanonical(
+        \\test "enums in arrays" {
+        \\    var colors = []Color{.Green};
+        \\    colors = []Colors{ .Green, .Cyan };
+        \\    colors = []Colors{
+        \\        .Grey,
+        \\        .Green,
+        \\        .Cyan,
+        \\    };
+        \\}
+        \\
+    );
+}
+
 test "zig fmt: character literal larger than u8" {
     try testCanonical(
         \\const x = '\U01f4a9';

@@ -808,7 +808,6 @@ fn parseBoolAndExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node 
 // CompareExpr <- BitwiseExpr (CompareOp BitwiseExpr)?
 fn parseCompareExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     return parseBinOpExpr(arena, it, tree, parseCompareOp, parseBitwiseExpr, .Once);
-    // TODO: stage1 supplies BinOpChainInf, not Once, but grammar uses `?`
 }
 
 // BitwiseExpr <- BitShiftExpr (BitwiseOp BitShiftExpr)*
@@ -849,8 +848,6 @@ fn parsePrefixExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 //      / Block
 //      / CurlySuffixExpr
 fn parsePrimaryExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
-    // TODO: enum literal not represented in grammar: https://github.com/ziglang/zig/issues/2235
-    if (try parseEnumLiteral(arena, it, tree)) |node| return node;
     if (try parseAsmExpr(arena, it, tree)) |node| return node;
     if (try parseIfExpr(arena, it, tree)) |node| return node;
 
@@ -1213,6 +1210,7 @@ fn parseSuffixExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 //     <- BUILTINIDENTIFIER FnCallArguments
 //      / CHAR_LITERAL
 //      / ContainerDecl
+//      / DOT IDENTIFIER
 //      / ErrorSetDecl
 //      / FLOAT
 //      / FnProto
@@ -1243,6 +1241,7 @@ fn parsePrimaryTypeExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*N
         return &node.base;
     }
     if (try parseContainerDecl(arena, it, tree)) |node| return node;
+    if (try parseEnumLiteral(arena, it, tree)) |node| return node;
     if (try parseErrorSetDecl(arena, it, tree)) |node| return node;
     if (try parseFloatLiteral(arena, it, tree)) |node| return node;
     if (try parseFnProto(arena, it, tree)) |node| return node;
@@ -1318,7 +1317,7 @@ fn parseContainerDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Nod
 fn parseErrorSetDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const error_token = eatToken(it, .Keyword_error) orelse return null;
     if (eatToken(it, .LBrace) == null) {
-        // TODO: Check the order of choices that leads to this not being "expectToken"
+        // Might parse as `KEYWORD_error DOT IDENTIFIER` later in PrimaryTypeExpr, so don't error
         _ = prevToken(it);
         return null;
     }
@@ -1381,8 +1380,11 @@ fn parseLabeledTypeExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*N
     }
 
     if (label != null) {
-        _ = prevToken(it); // rewind IDENTIFIER
-        _ = prevToken(it); // rewind ":"
+        // If we saw a label, there should have been a block next
+        try tree.errors.push(AstError{
+            .ExpectedLBrace = AstError.ExpectedLBrace{ .token = it.index },
+        });
+        return Error.UnexpectedToken;
     }
     return null;
 }
@@ -1519,11 +1521,10 @@ fn parseAsmExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     return &node.base;
 }
 
-// TODO: enum literal not represented in grammar: https://github.com/ziglang/zig/issues/2235
+// DOT IDENTIFIER
 fn parseEnumLiteral(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const dot = eatToken(it, .Period) orelse return null;
     const name = try expectToken(it, tree, .Identifier);
-
     const node = try arena.create(Node.EnumLiteral);
     node.* = Node.EnumLiteral{
         .base = Node{ .id = .EnumLiteral },
@@ -1646,7 +1647,12 @@ fn parseBlockLabel(arena: *Allocator, it: *TokenIterator, tree: *Tree) ?TokenInd
 fn parseFieldInit(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const period_token = eatToken(it, .Period) orelse return null;
     const name_token = try expectToken(it, tree, .Identifier);
-    const eq_token = try expectToken(it, tree, .Equal);
+    const eq_token = eatToken(it, .Equal) orelse {
+        // `.Name` may also be an enum literal, which is a later rule.
+        _ = prevToken(it); // rewind IDENTIFIER
+        _ = prevToken(it); // rewind DOT
+        return null;
+    };
     const expr_node = try expectNode(arena, it, tree, parseExpr, AstError{
         .ExpectedExpr = AstError.ExpectedExpr{ .token = it.index },
     });
@@ -2204,10 +2210,8 @@ fn parsePrefixOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     return &node.base;
 }
 
-// TODO: last choice allows for `*const volatile volatile const`, `*align(4) align(8) align(4)` etc.
 // TODO: ArrayTypeStart is either an array or a slice, but const/allowzero only work on
-//       pointers. (Note: does align(x) work for arrays as well as slices/pointers? Does volatile?)
-//       Maybe it would be better to have two separate rules?
+//       pointers. Consider updating this rule:
 //       ...
 //       / ArrayTypeStart
 //       / SliceTypeStart (ByteAlign / KEYWORD_const / KEYWORD_volatile / KEYWORD_allowzero)*
@@ -2255,8 +2259,15 @@ fn parsePrefixTypeOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node
         switch (node.cast(Node.PrefixOp).?.op) {
             .ArrayType => {},
             .SliceType => |*slice_type| {
+                // Collect pointer qualifiers in any order, but disallow duplicates
                 while (true) {
                     if (try parseByteAlign(arena, it, tree)) |align_expr| {
+                        if (slice_type.align_info != null) {
+                            try tree.errors.push(AstError{
+                                .ExtraAlignQualifier = AstError.ExtraAlignQualifier{ .token = it.index },
+                            });
+                            return Error.UnexpectedToken;
+                        }
                         slice_type.align_info = Node.PrefixOp.PtrInfo.Align{
                             .node = align_expr,
                             .bit_range = null,
@@ -2264,14 +2275,32 @@ fn parsePrefixTypeOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node
                         continue;
                     }
                     if (eatToken(it, .Keyword_const)) |const_token| {
+                        if (slice_type.const_token != null) {
+                            try tree.errors.push(AstError{
+                                .ExtraConstQualifier = AstError.ExtraConstQualifier{ .token = it.index },
+                            });
+                            return Error.UnexpectedToken;
+                        }
                         slice_type.const_token = const_token;
                         continue;
                     }
                     if (eatToken(it, .Keyword_volatile)) |volatile_token| {
+                        if (slice_type.volatile_token != null) {
+                            try tree.errors.push(AstError{
+                                .ExtraVolatileQualifier = AstError.ExtraVolatileQualifier{ .token = it.index },
+                            });
+                            return Error.UnexpectedToken;
+                        }
                         slice_type.volatile_token = volatile_token;
                         continue;
                     }
                     if (eatToken(it, .Keyword_allowzero)) |allowzero_token| {
+                        if (slice_type.allowzero_token != null) {
+                            try tree.errors.push(AstError{
+                                .ExtraAllowZeroQualifier = AstError.ExtraAllowZeroQualifier{ .token = it.index },
+                            });
+                            return Error.UnexpectedToken;
+                        }
                         slice_type.allowzero_token = allowzero_token;
                         continue;
                     }
