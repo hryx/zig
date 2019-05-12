@@ -1477,8 +1477,6 @@ test "zig fmt: var args" {
 test "zig fmt: var type" {
     try testCanonical(
         \\fn print(args: var) var {}
-        \\const Var = var;
-        \\const i: var = 0;
         \\
     );
 }

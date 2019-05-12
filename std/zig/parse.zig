@@ -1227,7 +1227,6 @@ fn parsePrimaryTypeExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*N
     if (try parseFnProto(arena, it, tree)) |node| return node;
     if (try parseGroupedExpr(arena, it, tree)) |node| return node;
     if (try parseLabeledTypeExpr(arena, it, tree)) |node| return node;
-    if (try parseVarType(arena, it, tree)) |node| return node; // TODO: missing from the grammar
     if (try parseIdentifier(arena, it, tree)) |node| return node;
     if (try parseIfTypeExpr(arena, it, tree)) |node| return node;
     if (try parseIntegerLiteral(arena, it, tree)) |node| return node;
