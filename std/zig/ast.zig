@@ -141,6 +141,7 @@ pub const Error = union(enum) {
     ExtraVolatileQualifier: ExtraVolatileQualifier,
     ExtraAllowZeroQualifier: ExtraAllowZeroQualifier,
     ExpectedTypeExpr: ExpectedTypeExpr,
+    ExpectedPrimaryTypeExpr: ExpectedPrimaryTypeExpr,
     ExpectedParamType: ExpectedParamType,
     ExpectedExpr: ExpectedExpr,
     ExpectedPrimaryExpr: ExpectedPrimaryExpr,
@@ -149,6 +150,7 @@ pub const Error = union(enum) {
     ExpectedParamList: ExpectedParamList,
     ExpectedPayload: ExpectedPayload,
     ExpectedBlockOrAssignment: ExpectedBlockOrAssignment,
+    ExpectedBlockOrExpression: ExpectedBlockOrExpression,
     ExpectedExprOrAssignment: ExpectedExprOrAssignment,
     ExpectedPrefixExpr: ExpectedPrefixExpr,
     ExpectedLoopExpr: ExpectedLoopExpr,
@@ -187,6 +189,7 @@ pub const Error = union(enum) {
             @TagType(Error).ExtraVolatileQualifier => |*x| return x.render(tokens, stream),
             @TagType(Error).ExtraAllowZeroQualifier => |*x| return x.render(tokens, stream),
             @TagType(Error).ExpectedTypeExpr => |*x| return x.render(tokens, stream),
+            @TagType(Error).ExpectedPrimaryTypeExpr => |*x| return x.render(tokens, stream),
             @TagType(Error).ExpectedParamType => |*x| return x.render(tokens, stream),
             @TagType(Error).ExpectedExpr => |*x| return x.render(tokens, stream),
             @TagType(Error).ExpectedPrimaryExpr => |*x| return x.render(tokens, stream),
@@ -195,6 +198,7 @@ pub const Error = union(enum) {
             @TagType(Error).ExpectedParamList => |*x| return x.render(tokens, stream),
             @TagType(Error).ExpectedPayload => |*x| return x.render(tokens, stream),
             @TagType(Error).ExpectedBlockOrAssignment => |*x| return x.render(tokens, stream),
+            @TagType(Error).ExpectedBlockOrExpression => |*x| return x.render(tokens, stream),
             @TagType(Error).ExpectedExprOrAssignment => |*x| return x.render(tokens, stream),
             @TagType(Error).ExpectedPrefixExpr => |*x| return x.render(tokens, stream),
             @TagType(Error).ExpectedLoopExpr => |*x| return x.render(tokens, stream),
@@ -235,6 +239,7 @@ pub const Error = union(enum) {
             @TagType(Error).ExtraVolatileQualifier => |x| return x.token,
             @TagType(Error).ExtraAllowZeroQualifier => |x| return x.token,
             @TagType(Error).ExpectedTypeExpr => |x| return x.token,
+            @TagType(Error).ExpectedPrimaryTypeExpr => |x| return x.token,
             @TagType(Error).ExpectedParamType => |x| return x.token,
             @TagType(Error).ExpectedExpr => |x| return x.token,
             @TagType(Error).ExpectedPrimaryExpr => |x| return x.token,
@@ -243,6 +248,7 @@ pub const Error = union(enum) {
             @TagType(Error).ExpectedParamList => |x| return x.token,
             @TagType(Error).ExpectedPayload => |x| return x.token,
             @TagType(Error).ExpectedBlockOrAssignment => |x| return x.token,
+            @TagType(Error).ExpectedBlockOrExpression => |x| return x.token,
             @TagType(Error).ExpectedExprOrAssignment => |x| return x.token,
             @TagType(Error).ExpectedPrefixExpr => |x| return x.token,
             @TagType(Error).ExpectedLoopExpr => |x| return x.token,
@@ -272,11 +278,13 @@ pub const Error = union(enum) {
     pub const ExpectedAsmOutputReturnOrType = SingleTokenError("Expected '->' or " ++ @tagName(Token.Id.Identifier) ++ ", found {}");
     pub const ExpectedSliceOrRBracket = SingleTokenError("Expected ']' or '..', found {}");
     pub const ExpectedTypeExpr = SingleTokenError("Expected type expression, found {}");
+    pub const ExpectedPrimaryTypeExpr = SingleTokenError("Expected primary type expression, found {}");
     pub const ExpectedExpr = SingleTokenError("Expected expression, found {}");
     pub const ExpectedPrimaryExpr = SingleTokenError("Expected primary expression, found {}");
     pub const ExpectedParamList = SingleTokenError("Expected parameter list, found {}");
     pub const ExpectedPayload = SingleTokenError("Expected loop payload, found {}");
     pub const ExpectedBlockOrAssignment = SingleTokenError("Expected block or assignment, found {}");
+    pub const ExpectedBlockOrExpression = SingleTokenError("Expected block or expression, found {}");
     pub const ExpectedExprOrAssignment = SingleTokenError("Expected expression or assignment, found {}");
     pub const ExpectedPrefixExpr = SingleTokenError("Expected prefix expression, found {}");
     pub const ExpectedLoopExpr = SingleTokenError("Expected loop expression, found {}");

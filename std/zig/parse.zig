@@ -452,8 +452,7 @@ fn parseStatement(arena: *Allocator, it: *TokenIterator, tree: *Tree) Error!?*No
 
         const body_node = if (semicolon == null) blk: {
             break :blk try expectNode(arena, it, tree, parseBlockExprStatement, AstError{
-                // TODO: expected block or expression
-                .ExpectedBlockOrAssignment = AstError.ExpectedBlockOrAssignment{ .token = it.index },
+                .ExpectedBlockOrExpression = AstError.ExpectedBlockOrExpression{ .token = it.index },
             });
         } else null;
 
@@ -469,8 +468,7 @@ fn parseStatement(arena: *Allocator, it: *TokenIterator, tree: *Tree) Error!?*No
     const defer_token = eatToken(it, .Keyword_defer) orelse eatToken(it, .Keyword_errdefer);
     if (defer_token) |token| {
         const expr_node = try expectNode(arena, it, tree, parseBlockExprStatement, AstError{
-            // TODO: expected block or expression
-            .ExpectedBlockOrAssignment = AstError.ExpectedBlockOrAssignment{ .token = it.index },
+            .ExpectedBlockOrExpression = AstError.ExpectedBlockOrExpression{ .token = it.index },
         });
         const node = try arena.create(Node.Defer);
         node.* = Node.Defer{
@@ -1115,8 +1113,7 @@ fn parseSuffixExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     if (try parseAsyncPrefix(arena, it, tree)) |async_node| {
         // TODO: Implement hack for parsing `async fn ...` in ast_parse_suffix_expr
         var res = try expectNode(arena, it, tree, parsePrimaryTypeExpr, AstError{
-            // TODO: different error?
-            .ExpectedPrimaryExpr = AstError.ExpectedPrimaryExpr{ .token = it.index },
+            .ExpectedPrimaryTypeExpr = AstError.ExpectedPrimaryTypeExpr{ .token = it.index },
         });
 
         while (try parseSuffixOp(arena, it, tree)) |node| {
