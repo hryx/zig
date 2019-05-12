@@ -294,14 +294,6 @@ fn parseFnProto(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         .ExpectedReturnType = AstError.ExpectedReturnType{ .token = it.index },
     });
 
-    // TODO: Based on this rule, `!var` is an acceptable return type, but there is no usage
-    // or coverage of that yet. The grammar also does not include `Keyword_var` as a choice
-    // for PrimaryTypeExpr, but the iterative stage2 parser treats it as one, which actually
-    // makes more sense given the return type rule above. Clarify this with @Hejsil.
-    // Alternative rule, if `var` were to be included in PrimaryTypeExpr (I think):
-    //
-    // - FnProto <- FnCC? KEYWORD_fn IDENTIFIER? LPAREN ParamDeclList RPAREN ByteAlign? LinkSection? EXCLAMATIONMARK? (KEYWORD_var / TypeExpr)
-    // + FnProto <- FnCC? KEYWORD_fn IDENTIFIER? LPAREN ParamDeclList RPAREN ByteAlign? LinkSection? EXCLAMATIONMARK? TypeExpr
     const return_type = if (exclamation_token != null)
         Node.FnProto.ReturnType{
             .InferErrorSet = return_type_expr,
