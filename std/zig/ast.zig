@@ -413,9 +413,7 @@ pub const Node = struct {
         Payload,
         PointerPayload,
         PointerIndexPayload,
-        StructField,
-        UnionTag,
-        EnumTag,
+        ContainerField,
         ErrorTag,
         AsmInput,
         AsmOutput,
@@ -479,9 +477,7 @@ pub const Node = struct {
         while (true) {
             switch (n.id) {
                 Id.Root,
-                Id.StructField,
-                Id.UnionTag,
-                Id.EnumTag,
+                Id.ContainerField,
                 Id.ParamDecl,
                 Id.Block,
                 Id.Payload,
@@ -742,40 +738,15 @@ pub const Node = struct {
         }
     };
 
-    pub const StructField = struct {
+    pub const ContainerField = struct {
         base: Node,
         doc_comments: ?*DocComment,
         visib_token: ?TokenIndex,
         name_token: TokenIndex,
-        type_expr: *Node,
-
-        pub fn iterate(self: *StructField, index: usize) ?*Node {
-            var i = index;
-
-            if (i < 1) return self.type_expr;
-            i -= 1;
-
-            return null;
-        }
-
-        pub fn firstToken(self: *const StructField) TokenIndex {
-            if (self.visib_token) |visib_token| return visib_token;
-            return self.name_token;
-        }
-
-        pub fn lastToken(self: *const StructField) TokenIndex {
-            return self.type_expr.lastToken();
-        }
-    };
-
-    pub const UnionTag = struct {
-        base: Node,
-        doc_comments: ?*DocComment,
-        name_token: TokenIndex,
         type_expr: ?*Node,
         value_expr: ?*Node,
 
-        pub fn iterate(self: *UnionTag, index: usize) ?*Node {
+        pub fn iterate(self: *ContainerField, index: usize) ?*Node {
             var i = index;
 
             if (self.type_expr) |type_expr| {
@@ -791,46 +762,17 @@ pub const Node = struct {
             return null;
         }
 
-        pub fn firstToken(self: *const UnionTag) TokenIndex {
+        pub fn firstToken(self: *const ContainerField) TokenIndex {
+            if (self.visib_token) |visib_token| return visib_token;
             return self.name_token;
         }
 
-        pub fn lastToken(self: *const UnionTag) TokenIndex {
+        pub fn lastToken(self: *const ContainerField) TokenIndex {
             if (self.value_expr) |value_expr| {
                 return value_expr.lastToken();
             }
             if (self.type_expr) |type_expr| {
                 return type_expr.lastToken();
-            }
-
-            return self.name_token;
-        }
-    };
-
-    pub const EnumTag = struct {
-        base: Node,
-        doc_comments: ?*DocComment,
-        name_token: TokenIndex,
-        value: ?*Node,
-
-        pub fn iterate(self: *EnumTag, index: usize) ?*Node {
-            var i = index;
-
-            if (self.value) |value| {
-                if (i < 1) return value;
-                i -= 1;
-            }
-
-            return null;
-        }
-
-        pub fn firstToken(self: *const EnumTag) TokenIndex {
-            return self.name_token;
-        }
-
-        pub fn lastToken(self: *const EnumTag) TokenIndex {
-            if (self.value) |value| {
-                return value.lastToken();
             }
 
             return self.name_token;

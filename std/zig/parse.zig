@@ -67,7 +67,7 @@ fn parseRoot(arena: *Allocator, it: *TokenIterator, tree: *Tree) Allocator.Error
         .doc_comments = null,
         .eof_token = undefined,
     };
-    node.decls = parseContainerMembers(arena, it, tree, .Keyword_struct) catch |err| {
+    node.decls = parseContainerMembers(arena, it, tree) catch |err| {
         // TODO: Switch on the error type
         // https://github.com/ziglang/zig/issues/2473
         if (err == Error.UnexpectedToken) return node;
@@ -90,7 +90,7 @@ fn parseRoot(arena: *Allocator, it: *TokenIterator, tree: *Tree) Allocator.Error
 //      / KEYWORD_pub? ContainerField COMMA ContainerMembers
 //      / KEYWORD_pub? ContainerField
 //      /
-fn parseContainerMembers(arena: *Allocator, it: *TokenIterator, tree: *Tree, kind: Token.Id) !Node.Root.DeclList {
+fn parseContainerMembers(arena: *Allocator, it: *TokenIterator, tree: *Tree) !Node.Root.DeclList {
     var list = Node.Root.DeclList.init(arena);
 
     while (true) {
@@ -118,18 +118,14 @@ fn parseContainerMembers(arena: *Allocator, it: *TokenIterator, tree: *Tree, kin
             continue;
         }
 
-        if (try parseContainerField(arena, it, tree, kind, doc_comments)) |node| {
-            if (node.cast(Node.StructField)) |struct_field| struct_field.visib_token = visibility_token;
+        if (try parseContainerField(arena, it, tree)) |node| {
+            const field = node.cast(Node.ContainerField).?;
+            field.visib_token = visibility_token;
+            field.doc_comments = doc_comments;
             try list.push(node);
             const comma = eatToken(it, .Comma) orelse break;
-            if (try parseAppendedDocComment(arena, it, tree, comma)) |appended_comment| {
-                switch (node.id) {
-                    .StructField => node.cast(Node.StructField).?.doc_comments = appended_comment,
-                    .UnionTag => node.cast(Node.UnionTag).?.doc_comments = appended_comment,
-                    .EnumTag => node.cast(Node.EnumTag).?.doc_comments = appended_comment,
-                    else => unreachable,
-                }
-            }
+            if (try parseAppendedDocComment(arena, it, tree, comma)) |appended_comment|
+                field.doc_comments = appended_comment;
             continue;
         }
 
@@ -384,7 +380,7 @@ fn parseVarDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 }
 
 // ContainerField <- IDENTIFIER (COLON TypeExpr)? (EQUAL Expr)?
-fn parseContainerField(arena: *Allocator, it: *TokenIterator, tree: *Tree, kind: Token.Id, doc_comments: ?*Node.DocComment) !?*Node {
+fn parseContainerField(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const name_token = eatToken(it, .Identifier) orelse return null;
 
     const type_expr = if (eatToken(it, .Colon)) |_|
@@ -394,48 +390,23 @@ fn parseContainerField(arena: *Allocator, it: *TokenIterator, tree: *Tree, kind:
     else
         null;
 
-    const default_value = if (eatToken(it, .Equal)) |_|
+    const value_expr = if (eatToken(it, .Equal)) |_|
         try expectNode(arena, it, tree, parseExpr, AstError{
             .ExpectedExpr = AstError.ExpectedExpr{ .token = it.index },
         })
     else
         null;
 
-    switch (kind) {
-        .Keyword_struct => {
-            const node = try arena.create(Node.StructField);
-            node.* = Node.StructField{
-                .base = Node{ .id = .StructField },
-                .name_token = name_token,
-                .type_expr = type_expr orelse undefined,
-                .doc_comments = doc_comments,
-                .visib_token = null,
-            };
-            return &node.base;
-        },
-        .Keyword_union => {
-            const node = try arena.create(Node.UnionTag);
-            node.* = Node.UnionTag{
-                .base = Node{ .id = .UnionTag },
-                .doc_comments = doc_comments,
-                .name_token = name_token,
-                .type_expr = type_expr,
-                .value_expr = default_value,
-            };
-            return &node.base;
-        },
-        .Keyword_enum => {
-            const node = try arena.create(Node.EnumTag);
-            node.* = Node.EnumTag{
-                .base = Node{ .id = .EnumTag },
-                .doc_comments = doc_comments,
-                .name_token = name_token,
-                .value = default_value,
-            };
-            return &node.base;
-        },
-        else => unreachable,
-    }
+    const node = try arena.create(Node.ContainerField);
+    node.* = Node.ContainerField{
+        .base = Node{ .id = .ContainerField },
+        .doc_comments = null,
+        .visib_token = null,
+        .name_token = name_token,
+        .type_expr = type_expr,
+        .value_expr = value_expr,
+    };
+    return &node.base;
 }
 
 // Statement
@@ -2575,8 +2546,7 @@ fn parsePtrTypeStart(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node
 fn parseContainerDeclAuto(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const node = (try parseContainerDeclType(arena, it, tree)) orelse return null;
     const lbrace = try expectToken(it, tree, .LBrace);
-    const kind = it.list.at(node.cast(Node.ContainerDecl).?.kind_token).id;
-    const members = try parseContainerMembers(arena, it, tree, kind);
+    const members = try parseContainerMembers(arena, it, tree);
     const rbrace = try expectToken(it, tree, .RBrace);
 
     const decl_type = node.cast(Node.ContainerDecl).?;
