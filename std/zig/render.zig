@@ -1638,15 +1638,15 @@ fn renderExpression(
 
             var it = asm_node.clobbers.iterator(0);
             while (true) {
-                const clobber_token = it.next().?;
+                const clobber_node = it.next().?.*;
 
                 if (it.peek() == null) {
-                    try renderToken(tree, stream, clobber_token.*, indent_once, start_col, Space.Newline);
+                    try renderExpression(allocator, stream, tree, indent_extra, start_col, clobber_node, Space.Newline);
                     try stream.writeByteNTimes(' ', indent);
                     return renderToken(tree, stream, asm_node.rparen, indent, start_col, space);
                 } else {
-                    try renderToken(tree, stream, clobber_token.*, indent_once, start_col, Space.None);
-                    const comma = tree.nextToken(clobber_token.*);
+                    try renderExpression(allocator, stream, tree, indent_extra, start_col, clobber_node, Space.None);
+                    const comma = tree.nextToken(clobber_node.lastToken());
                     try renderToken(tree, stream, comma, indent_once, start_col, Space.Space); // ,
                 }
             }

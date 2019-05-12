@@ -1614,7 +1614,7 @@ fn parseAsmClobbers(arena: *Allocator, it: *TokenIterator, tree: *Tree, asm_node
     if (eatToken(it, .Colon) == null) return;
     asm_node.clobbers = try ListParseFn(
         Node.Asm.ClobberList,
-        comptime TokenParseFn(.StringLiteral),
+        parseStringLiteral,
     )(arena, it, tree);
 }
 
@@ -2680,16 +2680,6 @@ fn ListParseFn(comptime L: type, comptime nodeParseFn: var) ParseFn(L) {
                 if (eatToken(it, .Comma) == null) break;
             }
             return list;
-        }
-    }.parse;
-}
-
-// Satisfies parseFn for ListParseFn, but returns a TokenIndex instead of a *Node.
-// NOTE: This is only needed for Asm.ClobberList, which should instead be a list of *Node anyway.
-fn TokenParseFn(comptime token: Token.Id) ParseFn(?TokenIndex) {
-    return struct {
-        pub fn parse(arena: *Allocator, it: *TokenIterator, tree: *Tree) error{}!?TokenIndex {
-            return eatToken(it, token);
         }
     }.parse;
 }
