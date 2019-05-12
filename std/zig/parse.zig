@@ -996,7 +996,13 @@ fn parseLoopExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         return node;
     }
 
-    return null;
+    if (inline_token == null) return null;
+
+    // If we've seen "inline", there should have been a "for" or "while"
+    try tree.errors.push(AstError{
+        .ExpectedInlinable = AstError.ExpectedInlinable{ .token = it.index },
+    });
+    return Error.UnexpectedToken;
 }
 
 // ForExpr <- ForPrefix Expr (KEYWORD_else Expr)?
