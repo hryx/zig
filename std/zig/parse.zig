@@ -1835,7 +1835,7 @@ fn parseForPrefix(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         .inline_token = null,
         .for_token = for_token,
         .array_expr = array_expr,
-        .payload = payload, // TODO: why is this field optional?
+        .payload = payload,
         .body = undefined, // set by caller
         .@"else" = null,
     };

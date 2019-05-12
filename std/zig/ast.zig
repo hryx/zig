@@ -1341,7 +1341,7 @@ pub const Node = struct {
         inline_token: ?TokenIndex,
         for_token: TokenIndex,
         array_expr: *Node,
-        payload: ?*Node,
+        payload: *Node,
         body: *Node,
         @"else": ?*Else,
 
@@ -1351,10 +1351,8 @@ pub const Node = struct {
             if (i < 1) return self.array_expr;
             i -= 1;
 
-            if (self.payload) |payload| {
-                if (i < 1) return payload;
-                i -= 1;
-            }
+            if (i < 1) return self.payload;
+            i -= 1;
 
             if (i < 1) return self.body;
             i -= 1;

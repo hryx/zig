@@ -1406,18 +1406,14 @@ fn renderExpression(
 
             const rparen = tree.nextToken(for_node.array_expr.lastToken());
 
-            const has_payload = for_node.payload != null;
             const body_is_block = for_node.body.id == ast.Node.Id.Block;
             const src_one_line_to_body = !body_is_block and tree.tokensOnSameLine(rparen, for_node.body.firstToken());
             const body_on_same_line = body_is_block or src_one_line_to_body;
 
-            const space_after_rparen = if (has_payload or body_on_same_line) Space.Space else Space.Newline;
-            try renderToken(tree, stream, rparen, indent, start_col, space_after_rparen); // )
+            try renderToken(tree, stream, rparen, indent, start_col, Space.Space); // )
 
-            if (for_node.payload) |payload| {
-                const space_after_payload = if (body_on_same_line) Space.Space else Space.Newline;
-                try renderExpression(allocator, stream, tree, indent, start_col, payload, space_after_payload); // |x|
-            }
+            const space_after_payload = if (body_on_same_line) Space.Space else Space.Newline;
+            try renderExpression(allocator, stream, tree, indent, start_col, for_node.payload, space_after_payload); // |x|
 
             const space_after_body = blk: {
                 if (for_node.@"else") |@"else"| {
