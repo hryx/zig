@@ -108,19 +108,39 @@ fn parseContainerMembers(arena: *Allocator, it: *TokenIterator, tree: *Tree) !No
             continue;
         }
 
-        const visibility_token = eatToken(it, .Keyword_pub);
+        const visib_token = eatToken(it, .Keyword_pub);
 
-        if (try parseTopLevelDecl(arena, it, tree, visibility_token, doc_comments)) |node| {
+        if (try parseTopLevelDecl(arena, it, tree)) |node| {
+            switch (node.id) {
+                .FnProto => {
+                    node.cast(Node.FnProto).?.doc_comments = doc_comments;
+                    node.cast(Node.FnProto).?.visib_token = visib_token;
+                },
+                .VarDecl => {
+                    node.cast(Node.VarDecl).?.doc_comments = doc_comments;
+                    node.cast(Node.VarDecl).?.visib_token = visib_token;
+                },
+                .Use => {
+                    node.cast(Node.Use).?.doc_comments = doc_comments;
+                    node.cast(Node.Use).?.visib_token = visib_token;
+                },
+                else => unreachable,
+            }
             try list.push(node);
             if (try parseAppendedDocComment(arena, it, tree, node.lastToken())) |appended_comment| {
-                if (node.cast(Node.VarDecl)) |var_decl| var_decl.doc_comments = appended_comment;
+                switch (node.id) {
+                    .FnProto => {},
+                    .VarDecl => node.cast(Node.VarDecl).?.doc_comments = appended_comment,
+                    .Use => node.cast(Node.Use).?.doc_comments = appended_comment,
+                    else => unreachable,
+                }
             }
             continue;
         }
 
         if (try parseContainerField(arena, it, tree)) |node| {
             const field = node.cast(Node.ContainerField).?;
-            field.visib_token = visibility_token;
+            field.visib_token = visib_token;
             field.doc_comments = doc_comments;
             try list.push(node);
             const comma = eatToken(it, .Comma) orelse break;
@@ -130,7 +150,7 @@ fn parseContainerMembers(arena: *Allocator, it: *TokenIterator, tree: *Tree) !No
         }
 
         // Dangling pub
-        if (visibility_token != null) {
+        if (visib_token != null) {
             try tree.errors.push(AstError{
                 .ExpectedPubItem = AstError.ExpectedPubItem{ .token = it.index },
             });
@@ -184,7 +204,7 @@ fn parseTopLevelComptime(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*
 //     <- (KEYWORD_export / KEYWORD_extern STRINGLITERAL? / KEYWORD_inline)? FnProto (SEMICOLON / Block)
 //      / (KEYWORD_export / KEYWORD_extern STRINGLITERAL?)? KEYWORD_threadlocal? VarDecl
 //      / KEYWORD_use Expr SEMICOLON
-fn parseTopLevelDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree, vis: ?TokenIndex, doc_comments: ?*Node.DocComment) !?*Node {
+fn parseTopLevelDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     var lib_name: ?*Node = null;
     const extern_export_inline_token = blk: {
         if (eatToken(it, .Keyword_export)) |token| break :blk token;
@@ -198,18 +218,13 @@ fn parseTopLevelDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree, vis: ?T
 
     if (try parseFnProto(arena, it, tree)) |node| {
         const fn_node = node.cast(Node.FnProto).?;
-
-        fn_node.*.doc_comments = doc_comments;
-        fn_node.*.visib_token = vis;
         fn_node.*.extern_export_inline_token = extern_export_inline_token;
         fn_node.*.lib_name = lib_name;
-
         if (eatToken(it, .Semicolon)) |_| return node;
         if (try parseBlock(arena, it, tree)) |body_node| {
             fn_node.body_node = body_node;
             return node;
         }
-
         try tree.errors.push(AstError{
             .ExpectedSemiOrLBrace = AstError.ExpectedSemiOrLBrace{ .token = it.index },
         });
@@ -227,8 +242,6 @@ fn parseTopLevelDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree, vis: ?T
 
     if (try parseVarDecl(arena, it, tree)) |node| {
         var var_decl = node.cast(Node.VarDecl).?;
-        var_decl.*.doc_comments = doc_comments;
-        var_decl.*.visib_token = vis;
         var_decl.*.thread_local_token = thread_local_token;
         var_decl.*.comptime_token = null;
         var_decl.*.extern_export_token = extern_export_inline_token;
@@ -256,8 +269,6 @@ fn parseTopLevelDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree, vis: ?T
     });
     const semicolon_token = try expectToken(it, tree, .Semicolon);
     const use_node_raw = use_node.cast(Node.Use).?;
-    use_node_raw.*.doc_comments = doc_comments;
-    use_node_raw.*.visib_token = vis;
     use_node_raw.*.expr = expr_node;
     use_node_raw.*.semicolon_token = semicolon_token;
 
