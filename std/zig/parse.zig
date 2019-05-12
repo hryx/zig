@@ -9,7 +9,7 @@ const TokenIndex = ast.TokenIndex;
 const Token = std.zig.Token;
 const TokenIterator = Tree.TokenList.Iterator;
 
-pub const Error = error{UnexpectedToken} || Allocator.Error;
+pub const Error = error{ParseError} || Allocator.Error;
 
 /// Result should be freed with tree.deinit() when there are
 /// no more references to any of the tokens or nodes.
@@ -70,7 +70,7 @@ fn parseRoot(arena: *Allocator, it: *TokenIterator, tree: *Tree) Allocator.Error
     node.decls = parseContainerMembers(arena, it, tree) catch |err| {
         // TODO: Switch on the error type
         // https://github.com/ziglang/zig/issues/2473
-        if (err == Error.UnexpectedToken) return node;
+        if (err == error.ParseError) return node;
         assert(err == Allocator.Error.OutOfMemory);
         return Allocator.Error.OutOfMemory;
     };
@@ -253,7 +253,7 @@ fn parseTopLevelDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node
         try tree.errors.push(AstError{
             .ExpectedVarDecl = AstError.ExpectedVarDecl{ .token = it.index },
         });
-        return Error.UnexpectedToken;
+        return error.ParseError;
     }
 
     if (extern_export_inline_token) |token| {
@@ -279,7 +279,7 @@ fn parseTopLevelDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node
 fn parseFnProto(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const cc = try parseFnCC(arena, it, tree);
     const fn_token = eatToken(it, .Keyword_fn) orelse {
-        if (cc == null) return null else return Error.UnexpectedToken;
+        if (cc == null) return null else return error.ParseError;
     };
     const name_token = eatToken(it, .Identifier);
     const lparen = try expectToken(it, tree, .LParen);
@@ -516,7 +516,7 @@ fn parseIfStatement(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node 
         try tree.errors.push(AstError{
             .ExpectedBlockOrAssignment = AstError.ExpectedBlockOrAssignment{ .token = it.index },
         });
-        return Error.UnexpectedToken;
+        return error.ParseError;
     }
 
     const semicolon = if (assign_expr != null) eatToken(it, .Semicolon) else null;
@@ -555,7 +555,7 @@ fn parseIfStatement(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node 
         try tree.errors.push(AstError{
             .ExpectedSemiOrElse = AstError.ExpectedSemiOrElse{ .token = it.index },
         });
-        return Error.UnexpectedToken;
+        return error.ParseError;
     }
 
     unreachable;
@@ -583,7 +583,7 @@ fn parseLabeledStatement(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*
         try tree.errors.push(AstError{
             .ExpectedLabelable = AstError.ExpectedLabelable{ .token = it.index },
         });
-        return Error.UnexpectedToken;
+        return error.ParseError;
     }
 
     return null;
@@ -984,7 +984,7 @@ fn parseLoopExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     try tree.errors.push(AstError{
         .ExpectedInlinable = AstError.ExpectedInlinable{ .token = it.index },
     });
-    return Error.UnexpectedToken;
+    return error.ParseError;
 }
 
 // ForExpr <- ForPrefix Expr (KEYWORD_else Expr)?
@@ -1375,7 +1375,7 @@ fn parseLabeledTypeExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*N
         try tree.errors.push(AstError{
             .ExpectedLBrace = AstError.ExpectedLBrace{ .token = it.index },
         });
-        return Error.UnexpectedToken;
+        return error.ParseError;
     }
     return null;
 }
@@ -1400,7 +1400,7 @@ fn parseLoopTypeExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node
     try tree.errors.push(AstError{
         .ExpectedInlinable = AstError.ExpectedInlinable{ .token = it.index },
     });
-    return Error.UnexpectedToken;
+    return error.ParseError;
 }
 
 // ForTypeExpr <- ForPrefix TypeExpr (KEYWORD_else TypeExpr)?
@@ -1736,7 +1736,7 @@ fn parseParamDecl(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         try tree.errors.push(AstError{
             .ExpectedParamType = AstError.ExpectedParamType{ .token = it.index },
         });
-        return Error.UnexpectedToken;
+        return error.ParseError;
     };
 
     const param_decl = try arena.create(Node.ParamDecl);
@@ -2257,7 +2257,7 @@ fn parsePrefixTypeOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node
                             try tree.errors.push(AstError{
                                 .ExtraAlignQualifier = AstError.ExtraAlignQualifier{ .token = it.index },
                             });
-                            return Error.UnexpectedToken;
+                            return error.ParseError;
                         }
                         slice_type.align_info = Node.PrefixOp.PtrInfo.Align{
                             .node = align_expr,
@@ -2270,7 +2270,7 @@ fn parsePrefixTypeOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node
                             try tree.errors.push(AstError{
                                 .ExtraConstQualifier = AstError.ExtraConstQualifier{ .token = it.index },
                             });
-                            return Error.UnexpectedToken;
+                            return error.ParseError;
                         }
                         slice_type.const_token = const_token;
                         continue;
@@ -2280,7 +2280,7 @@ fn parsePrefixTypeOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node
                             try tree.errors.push(AstError{
                                 .ExtraVolatileQualifier = AstError.ExtraVolatileQualifier{ .token = it.index },
                             });
-                            return Error.UnexpectedToken;
+                            return error.ParseError;
                         }
                         slice_type.volatile_token = volatile_token;
                         continue;
@@ -2290,7 +2290,7 @@ fn parsePrefixTypeOp(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node
                             try tree.errors.push(AstError{
                                 .ExtraAllowZeroQualifier = AstError.ExtraAllowZeroQualifier{ .token = it.index },
                             });
-                            return Error.UnexpectedToken;
+                            return error.ParseError;
                         }
                         slice_type.allowzero_token = allowzero_token;
                         continue;
@@ -2719,7 +2719,7 @@ fn parseBuiltinCall(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node 
         try tree.errors.push(AstError{
             .ExpectedParamList = AstError.ExpectedParamList{ .token = it.index },
         });
-        return Error.UnexpectedToken;
+        return error.ParseError;
     };
     const node = try arena.create(Node.BuiltinCall);
     node.* = Node.BuiltinCall{
@@ -3025,7 +3025,7 @@ fn expectToken(it: *TokenIterator, tree: *Tree, id: Token.Id) Error!TokenIndex {
         try tree.errors.push(AstError{
             .ExpectedToken = AstError.ExpectedToken{ .token = token.index, .expected_id = id },
         });
-        return Error.UnexpectedToken;
+        return error.ParseError;
     }
     return token.index;
 }
@@ -3067,7 +3067,7 @@ fn expectNode(
 ) Error!*Node {
     return (try parseFn(arena, it, tree)) orelse {
         try tree.errors.push(err);
-        return Error.UnexpectedToken;
+        return error.ParseError;
     };
 }
 
