@@ -790,7 +790,7 @@ fn parseBoolOrExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
         arena,
         it,
         tree,
-        SimpleBinOpParser(.Keyword_or, Node.InfixOp.Op.BoolOr).parse,
+        SimpleBinOpParseFn(.Keyword_or, Node.InfixOp.Op.BoolOr),
         parseBoolAndExpr,
         .Infinitely,
     );
@@ -802,7 +802,7 @@ fn parseBoolAndExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node 
         arena,
         it,
         tree,
-        SimpleBinOpParser(.Keyword_and, Node.InfixOp.Op.BoolAnd).parse,
+        SimpleBinOpParseFn(.Keyword_and, Node.InfixOp.Op.BoolAnd),
         parseCompareExpr,
         .Infinitely,
     );
@@ -1121,7 +1121,7 @@ fn parseTypeExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) Error!?*Nod
 fn parseErrorUnionExpr(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
     const suffix_expr = (try parseSuffixExpr(arena, it, tree)) orelse return null;
 
-    if (try SimpleBinOpParser(.Bang, Node.InfixOp.Op.ErrorUnion).parse(arena, it, tree)) |node| {
+    if (try SimpleBinOpParseFn(.Bang, Node.InfixOp.Op.ErrorUnion)(arena, it, tree)) |node| {
         const error_union = node.cast(Node.InfixOp).?;
         const type_expr = try expectNode(arena, it, tree, parseTypeExpr, AstError{
             .ExpectedTypeExpr = AstError.ExpectedTypeExpr{ .token = it.index },
@@ -1630,10 +1630,10 @@ fn parseAsmInputItem(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node
 // StringList <- (STRINGLITERAL COMMA)* STRINGLITERAL?
 fn parseAsmClobbers(arena: *Allocator, it: *TokenIterator, tree: *Tree, asm_node: *Node.Asm) !void {
     if (eatToken(it, .Colon) == null) return;
-    asm_node.clobbers = try ListParser(
+    asm_node.clobbers = try ListParseFn(
         Node.Asm.ClobberList,
-        tokenParseFn(.StringLiteral).parse,
-    ).parse(arena, it, tree);
+        comptime TokenParseFn(.StringLiteral),
+    )(arena, it, tree);
 }
 
 // BreakLabel <- COLON IDENTIFIER
@@ -2484,7 +2484,7 @@ fn parseAsyncPrefix(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node 
 // ExprList <- (Expr COMMA)* Expr?
 fn parseFnCallArguments(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?AnnotatedParamList {
     if (eatToken(it, .LParen) == null) return null;
-    const list = try ListParser(Node.FnProto.ParamList, parseExpr).parse(arena, it, tree);
+    const list = try ListParseFn(Node.FnProto.ParamList, parseExpr)(arena, it, tree);
     const rparen = try expectToken(it, tree, .RParen);
     return AnnotatedParamList{ .list = list, .rparen = rparen };
 }
@@ -2661,30 +2661,74 @@ fn parseByteAlign(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 // IdentifierList <- (IDENTIFIER COMMA)* IDENTIFIER?
 // Only ErrorSetDecl parses an IdentifierList
 fn parseErrorTagList(arena: *Allocator, it: *TokenIterator, tree: *Tree) !Node.ErrorSetDecl.DeclList {
-    return try ListParser(Node.ErrorSetDecl.DeclList, parseErrorTag).parse(arena, it, tree);
+    return try ListParseFn(Node.ErrorSetDecl.DeclList, parseErrorTag)(arena, it, tree);
 }
 
 // SwitchProngList <- (SwitchProng COMMA)* SwitchProng?
 fn parseSwitchProngList(arena: *Allocator, it: *TokenIterator, tree: *Tree) !Node.Switch.CaseList {
-    return try ListParser(Node.Switch.CaseList, parseSwitchProng).parse(arena, it, tree);
+    return try ListParseFn(Node.Switch.CaseList, parseSwitchProng)(arena, it, tree);
 }
 
 // AsmOutputList <- (AsmOutputItem COMMA)* AsmOutputItem?
 fn parseAsmOutputList(arena: *Allocator, it: *TokenIterator, tree: *Tree) Error!Node.Asm.OutputList {
-    return try ListParser(Node.Asm.OutputList, parseAsmOutputItem).parse(arena, it, tree);
+    return try ListParseFn(Node.Asm.OutputList, parseAsmOutputItem)(arena, it, tree);
 }
 
 // AsmInputList <- (AsmInputItem COMMA)* AsmInputItem?
 fn parseAsmInputList(arena: *Allocator, it: *TokenIterator, tree: *Tree) Error!Node.Asm.InputList {
-    return try ListParser(Node.Asm.InputList, parseAsmInputItem).parse(arena, it, tree);
+    return try ListParseFn(Node.Asm.InputList, parseAsmInputItem)(arena, it, tree);
 }
 
 // ParamDeclList <- (ParamDecl COMMA)* ParamDecl?
 fn parseParamDeclList(arena: *Allocator, it: *TokenIterator, tree: *Tree) !Node.FnProto.ParamList {
-    return try ListParser(Node.FnProto.ParamList, parseParamDecl).parse(arena, it, tree);
+    return try ListParseFn(Node.FnProto.ParamList, parseParamDecl)(arena, it, tree);
 }
 
-const ParseFn = fn (*Allocator, *TokenIterator, *Tree) Error!?*Node;
+fn ParseFn(comptime T: type) type {
+    return fn (*Allocator, *TokenIterator, *Tree) Error!T;
+}
+
+const NodeParseFn = fn (*Allocator, *TokenIterator, *Tree) Error!?*Node;
+
+fn ListParseFn(comptime L: type, comptime nodeParseFn: var) ParseFn(L) {
+    return struct {
+        pub fn parse(arena: *Allocator, it: *TokenIterator, tree: *Tree) !L {
+            var list = L.init(arena);
+            while (try nodeParseFn(arena, it, tree)) |node| {
+                try list.push(node);
+                if (eatToken(it, .Comma) == null) break;
+            }
+            return list;
+        }
+    }.parse;
+}
+
+// Satisfies parseFn for ListParseFn, but returns a TokenIndex instead of a *Node.
+// NOTE: This is only needed for Asm.ClobberList, which should instead be a list of *Node anyway.
+fn TokenParseFn(comptime token: Token.Id) ParseFn(?TokenIndex) {
+    return struct {
+        pub fn parse(arena: *Allocator, it: *TokenIterator, tree: *Tree) error{}!?TokenIndex {
+            return eatToken(it, token);
+        }
+    }.parse;
+}
+
+fn SimpleBinOpParseFn(comptime token: Token.Id, comptime op: Node.InfixOp.Op) NodeParseFn {
+    return struct {
+        pub fn parse(arena: *Allocator, it: *TokenIterator, tree: *Tree) Error!?*Node {
+            const op_token = eatToken(it, token) orelse return null;
+            const node = try arena.create(Node.InfixOp);
+            node.* = Node.InfixOp{
+                .base = Node{ .id = .InfixOp },
+                .op_token = op_token,
+                .lhs = undefined, // set by caller
+                .op = op,
+                .rhs = undefined, // set by caller
+            };
+            return &node.base;
+        }
+    }.parse;
+}
 
 // Helper parsers not included in the grammar
 
@@ -2822,7 +2866,7 @@ fn parseUse(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
 }
 
 // IfPrefix Body (KEYWORD_else Payload? Body)?
-fn parseIf(arena: *Allocator, it: *TokenIterator, tree: *Tree, bodyParseFn: ParseFn) !?*Node {
+fn parseIf(arena: *Allocator, it: *TokenIterator, tree: *Tree, bodyParseFn: NodeParseFn) !?*Node {
     const node = (try parseIfPrefix(arena, it, tree)) orelse return null;
     const if_prefix = node.cast(Node.If).?;
 
@@ -2885,8 +2929,8 @@ fn parsePrefixOpExpr(
     arena: *Allocator,
     it: *TokenIterator,
     tree: *Tree,
-    opParseFn: ParseFn,
-    childParseFn: ParseFn,
+    opParseFn: NodeParseFn,
+    childParseFn: NodeParseFn,
 ) Error!?*Node {
     if (try opParseFn(arena, it, tree)) |first_op| {
         var rightmost_op = first_op;
@@ -2945,9 +2989,12 @@ fn parseBinOpExpr(
     arena: *Allocator,
     it: *TokenIterator,
     tree: *Tree,
-    opParseFn: ParseFn,
-    childParseFn: ParseFn,
-    chain: BinOpChain,
+    opParseFn: NodeParseFn,
+    childParseFn: NodeParseFn,
+    chain: enum {
+        Once,
+        Infinitely,
+    },
 ) Error!?*Node {
     var res = (try childParseFn(arena, it, tree)) orelse return null;
 
@@ -2970,28 +3017,6 @@ fn parseBinOpExpr(
 
     return res;
 }
-
-fn SimpleBinOpParser(token: Token.Id, op: Node.InfixOp.Op) type {
-    return struct {
-        pub fn parse(arena: *Allocator, it: *TokenIterator, tree: *Tree) !?*Node {
-            const op_token = eatToken(it, token) orelse return null;
-            const node = try arena.create(Node.InfixOp);
-            node.* = Node.InfixOp{
-                .base = Node{ .id = .InfixOp },
-                .op_token = op_token,
-                .lhs = undefined, // set by caller
-                .op = op,
-                .rhs = undefined, // set by caller
-            };
-            return &node.base;
-        }
-    };
-}
-
-const BinOpChain = enum {
-    Once,
-    Infinitely,
-};
 
 fn createInfixOp(arena: *Allocator, index: TokenIndex, op: Node.InfixOp.Op) !*Node {
     const node = try arena.create(Node.InfixOp);
@@ -3056,36 +3081,12 @@ fn expectNode(
     arena: *Allocator,
     it: *TokenIterator,
     tree: *Tree,
-    parseFn: ParseFn,
+    parseFn: NodeParseFn,
     err: AstError, // if parsing fails
 ) Error!*Node {
     return (try parseFn(arena, it, tree)) orelse {
         try tree.errors.push(err);
         return Error.UnexpectedToken;
-    };
-}
-
-fn ListParser(comptime L: type, comptime nodeParseFn: var) type {
-    return struct {
-        pub fn parse(arena: *Allocator, it: *TokenIterator, tree: *Tree) !L {
-            var list = L.init(arena);
-            while (try nodeParseFn(arena, it, tree)) |node| {
-                try list.push(node);
-                if (eatToken(it, .Comma) == null) break;
-            }
-            return list;
-        }
-    };
-}
-
-// Satisfies parseFn for ListParser, but returns a TokenIndex instead of a *Node.
-// NOTE: This is only needed for Asm.ClobberList, which should instead be a list of *Node anyway.
-fn tokenParseFn(token: Token.Id) type {
-    return struct {
-        const NoError = error{};
-        pub fn parse(arena: *Allocator, it: *TokenIterator, tree: *Tree) NoError!?TokenIndex {
-            return eatToken(it, token);
-        }
     };
 }
 
