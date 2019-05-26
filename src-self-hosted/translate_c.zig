@@ -110,6 +110,8 @@ const Context = struct {
     err: Error,
     source_manager: *ZigClangSourceManager,
     decl_table: DeclTable,
+    global_table: std.BufSet,
+    macro_table: std.BufSet,
     global_scope: *Scope.Root,
     mode: Mode,
 
@@ -186,6 +188,8 @@ pub fn translate(
         .source_manager = ZigClangASTUnit_getSourceManager(ast_unit),
         .err = undefined,
         .decl_table = DeclTable.init(arena),
+        .global_table = std.BufSet.init(arena),
+        .macro_table = std.BufSet.init(arena),
         .global_scope = try arena.create(Scope.Root),
         .mode = mode,
     };
@@ -199,6 +203,8 @@ pub fn translate(
     if (!ZigClangASTUnit_visitLocalTopLevelDecls(ast_unit, &context, declVisitorC)) {
         return context.err;
     }
+
+    processPreprocessorEntities(&context, ast_unit);
 
     _ = try appendToken(&context, .Eof, "");
     tree.source = source_buffer.toOwnedSlice();
@@ -247,7 +253,10 @@ fn declVisitor(c: *Context, decl: *const ZigClangDecl) Error!void {
 }
 
 fn visitFnDecl(c: *Context, fn_decl: *const ZigClangFunctionDecl) Error!void {
-    if (try c.decl_table.put(@ptrToInt(fn_decl), {})) |_| return; // Avoid processing this decl twice
+    const fn_name = try c.str(ZigClangDecl_getName_bytes_begin(@ptrCast(*const ZigClangDecl, fn_decl)));
+    if (c.getGlobalName(fn_name) != null) return;
+
+    assert(try c.decl_table.put(@ptrToInt(fn_decl), {}) == null);
     const rp = makeRestorePoint(c);
     const fn_name = try c.str(ZigClangDecl_getName_bytes_begin(@ptrCast(*const ZigClangDecl, fn_decl)));
     const fn_decl_loc = ZigClangFunctionDecl_getLocation(fn_decl);
@@ -374,6 +383,7 @@ fn transCompoundStmt(rp: RestorePoint, scope: *Scope, stmt: *const ZigClangCompo
 }
 
 fn addTopLevelDecl(c: *Context, name: []const u8, decl_node: *ast.Node) !void {
+    assert(try c.global_table.put(name, {}) == null);
     try c.tree.root_node.decls.push(decl_node);
 }
 
@@ -680,3 +690,31 @@ fn appendIdentifier(c: *Context, name: []const u8) !*ast.Node {
 pub fn freeErrors(errors: []ClangErrMsg) void {
     ZigClangErrorMsg_delete(errors.ptr, errors.len);
 }
+
+fn processPreprocessorEntities(c: *Context, ast_unit: *ZigClangASTUnit) void {
+    // TODO: if we see #undef, delete it from the table
+    for (ZigClangASTUnit_getLocalPreprocessingEntities(ast_unit)) |entity| {
+        switch (ZigClangPreprocessorEntity_getKind(entity)) {
+            .Invalid,
+            .InclusionDirective,
+            .MacroExpansion,
+            => {},
+            .MacroDefinition => {
+                const record = @ptrCast(ZigClangMacroDefinitionRecord, entity);
+
+                const range = ZigClangMarcroDefinitionRecord_getSourceRange(record);
+                const begin_loc = ZigClangSourceRange_getBegin(range);
+                const end_loc = ZigClangSourceRange_getEnd(range);
+                if (ZigClangSourceLocation_eq(begin_loc, end_loc)) continue; // Value-less #define
+
+                const name = buf_create_from_str(ZigClangMacroDefinitionRecord_getName(record));
+                if (c.macro_table.contains(name)) continue;
+
+                const begin_c = ZigClangSourceManager_getCharacterData(c.source_manager, begin_loc);
+                processMacro(c, &ctok, name, begin_c);
+            },
+        }
+    }
+}
+
+fn processMacro(c: *Context, ctok: void, name: buffer, begin_c: something) void {}

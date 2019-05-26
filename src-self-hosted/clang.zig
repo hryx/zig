@@ -450,6 +450,15 @@ pub const ZigClangAPValueKind = extern enum {
     AddrLabelDiff,
 };
 
+pub const ZigClangPreprocessedEntityKind = extern enum {
+    InvalidKind,
+    MacroExpansionKind,
+    MacroDefinitionKind,
+    InclusionDirectiveKind,
+    FirstPreprocessingDirective = MacroDefinitionKind,
+    LastPreprocessingDirective = InclusionDirectiveKind,
+};
+
 pub extern fn ZigClangSourceManager_getSpellingLoc(arg0: ?*const struct_ZigClangSourceManager, Loc: struct_ZigClangSourceLocation) struct_ZigClangSourceLocation;
 pub extern fn ZigClangSourceManager_getFilename(self: *const struct_ZigClangSourceManager, SpellingLoc: struct_ZigClangSourceLocation) ?[*]const u8;
 pub extern fn ZigClangSourceManager_getSpellingLineNumber(arg0: ?*const struct_ZigClangSourceManager, Loc: struct_ZigClangSourceLocation) c_uint;
@@ -458,6 +467,7 @@ pub extern fn ZigClangSourceManager_getCharacterData(arg0: ?*const struct_ZigCla
 pub extern fn ZigClangASTContext_getPointerType(arg0: ?*const struct_ZigClangASTContext, T: struct_ZigClangQualType) struct_ZigClangQualType;
 pub extern fn ZigClangASTUnit_getASTContext(arg0: ?*struct_ZigClangASTUnit) ?*struct_ZigClangASTContext;
 pub extern fn ZigClangASTUnit_getSourceManager(self: *struct_ZigClangASTUnit) *struct_ZigClangSourceManager;
+pub extern fn ZigClangASTUnit_getLocalPreprocessingEntities(self: *struct_ZigClangASTUnit) [*c]const struct_ZigClangPreprocessedEntity;
 pub extern fn ZigClangASTUnit_visitLocalTopLevelDecls(self: *struct_ZigClangASTUnit, context: ?*c_void, Fn: ?extern fn (?*c_void, *const struct_ZigClangDecl) bool) bool;
 pub extern fn ZigClangRecordType_getDecl(record_ty: ?*const struct_ZigClangRecordType) ?*const struct_ZigClangRecordDecl;
 pub extern fn ZigClangEnumType_getDecl(record_ty: ?*const struct_ZigClangEnumType) ?*const struct_ZigClangEnumDecl;
