@@ -3003,9 +3003,6 @@ void scan_decls(CodeGen *g, ScopeDecls *decls_scope, AstNode *node) {
         case NodeTypeIntLiteral:
         case NodeTypeStringLiteral:
         case NodeTypeCharLiteral:
-        case NodeTypeBoolLiteral:
-        case NodeTypeNullLiteral:
-        case NodeTypeUndefinedLiteral:
         case NodeTypeSymbol:
         case NodeTypePrefixOpExpr:
         case NodeTypePointerType:
@@ -6072,6 +6069,18 @@ bool fn_type_can_fail(FnTypeId *fn_type_id) {
     return type_can_fail(fn_type_id->return_type) || fn_type_id->cc == CallingConventionAsync;
 }
 
+ConstExprValue *get_primitive_value(CodeGen *g, Buf *name) {
+    auto entry = g->primitive_value_table.maybe_get(name);
+    if (entry == nullptr)
+        return nullptr;
+
+    ConstExprValue *value = entry->value;
+    if (value->type->id == ZigTypeIdMetaType)
+        return nullptr;
+
+    return value;
+}
+
 // ErrorNone - result pointer has the type
 // ErrorOverflow - an integer primitive type has too large a bit width
 // ErrorPrimitiveTypeNotFound - result pointer unchanged
@@ -6096,11 +6105,15 @@ Error get_primitive_type(CodeGen *g, Buf *name, ZigType **result) {
 
 not_integer:
 
-    auto primitive_table_entry = g->primitive_type_table.maybe_get(name);
+    auto primitive_table_entry = g->primitive_value_table.maybe_get(name);
     if (primitive_table_entry == nullptr)
         return ErrorPrimitiveTypeNotFound;
 
-    *result = primitive_table_entry->value;
+    ConstExprValue *value = primitive_table_entry->value;
+    if (value->type->id != ZigTypeIdMetaType)
+        return ErrorPrimitiveTypeNotFound;
+
+    *result = value->data.x_type;
     return ErrorNone;
 }
 

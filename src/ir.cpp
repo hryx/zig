@@ -4330,12 +4330,6 @@ static IrInstruction *ir_gen_char_lit(IrBuilder *irb, Scope *scope, AstNode *nod
     return ir_build_const_uint(irb, scope, node, node->data.char_literal.value);
 }
 
-static IrInstruction *ir_gen_null_literal(IrBuilder *irb, Scope *scope, AstNode *node) {
-    assert(node->type == NodeTypeNullLiteral);
-
-    return ir_build_const_null(irb, scope, node);
-}
-
 static void populate_invalid_variable_in_scope(CodeGen *g, Scope *scope, AstNode *node, Buf *var_name) {
     ScopeDecls *scope_decls = nullptr;
     while (scope != nullptr) {
@@ -4387,6 +4381,20 @@ static IrInstruction *ir_gen_symbol(IrBuilder *irb, Scope *scope, AstNode *node,
             return ir_build_ref(irb, scope, node, value, false, false);
         } else {
             return ir_expr_wrap(irb, scope, value, result_loc);
+        }
+    }
+
+    ConstExprValue *primitive_value = get_primitive_value(irb->codegen, variable_name);
+    if (primitive_value != nullptr) {
+        switch (primitive_value->type->id) {
+            case ZigTypeIdBool:
+                return ir_build_const_bool(irb, scope, node, primitive_value->data.x_bool);
+            case ZigTypeIdNull:
+                return ir_build_const_null(irb, scope, node);
+            case ZigTypeIdUndefined:
+                return ir_build_const_undefined(irb, scope, node);
+            default:
+                zig_unreachable();
         }
     }
 
@@ -6674,11 +6682,6 @@ static IrInstruction *ir_gen_for_expr(IrBuilder *irb, Scope *parent_scope, AstNo
     return ir_lval_wrap(irb, parent_scope, phi, lval, result_loc);
 }
 
-static IrInstruction *ir_gen_bool_literal(IrBuilder *irb, Scope *scope, AstNode *node) {
-    assert(node->type == NodeTypeBoolLiteral);
-    return ir_build_const_bool(irb, scope, node, node->data.bool_literal.value);
-}
-
 static IrInstruction *ir_gen_enum_literal(IrBuilder *irb, Scope *scope, AstNode *node) {
     assert(node->type == NodeTypeEnumLiteral);
     Buf *name = &node->data.enum_literal.identifier->data.str_lit.str;
@@ -6765,11 +6768,6 @@ static IrInstruction *ir_gen_promise_type(IrBuilder *irb, Scope *scope, AstNode 
     }
 
     return ir_build_promise_type(irb, scope, node, payload_type_value);
-}
-
-static IrInstruction *ir_gen_undefined_literal(IrBuilder *irb, Scope *scope, AstNode *node) {
-    assert(node->type == NodeTypeUndefinedLiteral);
-    return ir_build_const_undefined(irb, scope, node);
 }
 
 static Error parse_asm_template(IrBuilder *irb, AstNode *source_node, Buf *asm_template,
@@ -8506,8 +8504,6 @@ static IrInstruction *ir_gen_node_raw(IrBuilder *irb, AstNode *node, Scope *scop
             IrInstruction *load_ptr = ir_build_load_ptr(irb, scope, node, unwrapped_ptr);
             return ir_expr_wrap(irb, scope, load_ptr, result_loc);
         }
-        case NodeTypeBoolLiteral:
-            return ir_lval_wrap(irb, scope, ir_gen_bool_literal(irb, scope, node), lval, result_loc);
         case NodeTypeArrayType:
             return ir_lval_wrap(irb, scope, ir_gen_array_type(irb, scope, node), lval, result_loc);
         case NodeTypePointerType:
@@ -8516,12 +8512,8 @@ static IrInstruction *ir_gen_node_raw(IrBuilder *irb, AstNode *node, Scope *scop
             return ir_lval_wrap(irb, scope, ir_gen_promise_type(irb, scope, node), lval, result_loc);
         case NodeTypeStringLiteral:
             return ir_lval_wrap(irb, scope, ir_gen_string_literal(irb, scope, node), lval, result_loc);
-        case NodeTypeUndefinedLiteral:
-            return ir_lval_wrap(irb, scope, ir_gen_undefined_literal(irb, scope, node), lval, result_loc);
         case NodeTypeAsmExpr:
             return ir_lval_wrap(irb, scope, ir_gen_asm_expr(irb, scope, node), lval, result_loc);
-        case NodeTypeNullLiteral:
-            return ir_lval_wrap(irb, scope, ir_gen_null_literal(irb, scope, node), lval, result_loc);
         case NodeTypeIfErrorExpr:
             return ir_gen_if_err_expr(irb, scope, node, lval, result_loc);
         case NodeTypeIfOptional:

@@ -454,9 +454,6 @@ enum NodeType {
     NodeTypePtrDeref,
     NodeTypeUnwrapOptional,
     NodeTypeUse,
-    NodeTypeBoolLiteral,
-    NodeTypeNullLiteral,
-    NodeTypeUndefinedLiteral,
     NodeTypeUnreachable,
     NodeTypeIfBoolExpr,
     NodeTypeWhileExpr,
@@ -896,21 +893,11 @@ struct AstNodeContainerInitExpr {
     ContainerInitKind kind;
 };
 
-struct AstNodeNullLiteral {
-};
-
-struct AstNodeUndefinedLiteral {
-};
-
 struct AstNodeThisLiteral {
 };
 
 struct AstNodeSymbolExpr {
     Buf *symbol;
-};
-
-struct AstNodeBoolLiteral {
-    bool value;
 };
 
 struct AstNodeBreakExpr {
@@ -998,11 +985,8 @@ struct AstNode {
         AstNodeIntLiteral int_literal;
         AstNodeContainerInitExpr container_init_expr;
         AstNodeStructValueField struct_val_field;
-        AstNodeNullLiteral null_literal;
-        AstNodeUndefinedLiteral undefined_literal;
         AstNodeThisLiteral this_literal;
         AstNodeSymbolExpr symbol_expr;
-        AstNodeBoolLiteral bool_literal;
         AstNodeBreakExpr break_expr;
         AstNodeContinueExpr continue_expr;
         AstNodeUnreachableExpr unreachable_expr;
@@ -1731,7 +1715,7 @@ struct CodeGen {
     // reminder: hash tables must be initialized before use
     HashMap<Buf *, ZigType *, buf_hash, buf_eql_buf> import_table;
     HashMap<Buf *, BuiltinFnEntry *, buf_hash, buf_eql_buf> builtin_fn_table;
-    HashMap<Buf *, ZigType *, buf_hash, buf_eql_buf> primitive_type_table;
+    HashMap<Buf *, ConstExprValue *, buf_hash, buf_eql_buf> primitive_value_table;
     HashMap<TypeId, ZigType *, type_id_hash, type_id_eql> type_table;
     HashMap<FnTypeId *, ZigType *, fn_type_id_hash, fn_type_id_eql> fn_type_table;
     HashMap<Buf *, ErrorTableEntry *, buf_hash, buf_eql_buf> error_table;
@@ -1803,6 +1787,13 @@ struct CodeGen {
     ZigType *ptr_to_stack_trace_type;
     ZigType *err_tag_type;
     ZigType *test_fn_type;
+
+    struct {
+        ConstExprValue *x_true;
+        ConstExprValue *x_false;
+        ConstExprValue *x_null;
+        ConstExprValue *x_undefined;
+    } builtin_values;
 
     Buf llvm_triple_str;
     Buf global_asm;
@@ -1921,7 +1912,7 @@ struct CodeGen {
     Buf *zig_lib_dir;
     Buf *zig_std_dir;
     Buf *dynamic_linker_path;
-    Buf *version_script_path; 
+    Buf *version_script_path;
 
     const char **llvm_argv;
     size_t llvm_argv_len;
@@ -3700,12 +3691,12 @@ enum ResultLocId {
     ResultLocIdBitCast,
 };
 
-// Additions to this struct may need to be handled in 
+// Additions to this struct may need to be handled in
 // ir_reset_result
 struct ResultLoc {
     ResultLocId id;
     bool written;
-    IrInstruction *resolved_loc; // result ptr 
+    IrInstruction *resolved_loc; // result ptr
     IrInstruction *source_instruction;
     IrInstruction *gen_instruction; // value to store to the result loc
     ZigType *implicit_elem_type;

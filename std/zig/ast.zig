@@ -400,9 +400,6 @@ pub const Node = struct {
         StringLiteral,
         MultilineStringLiteral,
         CharLiteral,
-        BoolLiteral,
-        NullLiteral,
-        UndefinedLiteral,
         Unreachable,
         Identifier,
         GroupedExpression,
@@ -2000,57 +1997,6 @@ pub const Node = struct {
         }
 
         pub fn lastToken(self: *const CharLiteral) TokenIndex {
-            return self.token;
-        }
-    };
-
-    pub const BoolLiteral = struct {
-        base: Node,
-        token: TokenIndex,
-
-        pub fn iterate(self: *BoolLiteral, index: usize) ?*Node {
-            return null;
-        }
-
-        pub fn firstToken(self: *const BoolLiteral) TokenIndex {
-            return self.token;
-        }
-
-        pub fn lastToken(self: *const BoolLiteral) TokenIndex {
-            return self.token;
-        }
-    };
-
-    pub const NullLiteral = struct {
-        base: Node,
-        token: TokenIndex,
-
-        pub fn iterate(self: *NullLiteral, index: usize) ?*Node {
-            return null;
-        }
-
-        pub fn firstToken(self: *const NullLiteral) TokenIndex {
-            return self.token;
-        }
-
-        pub fn lastToken(self: *const NullLiteral) TokenIndex {
-            return self.token;
-        }
-    };
-
-    pub const UndefinedLiteral = struct {
-        base: Node,
-        token: TokenIndex,
-
-        pub fn iterate(self: *UndefinedLiteral, index: usize) ?*Node {
-            return null;
-        }
-
-        pub fn firstToken(self: *const UndefinedLiteral) TokenIndex {
-            return self.token;
-        }
-
-        pub fn lastToken(self: *const UndefinedLiteral) TokenIndex {
             return self.token;
         }
     };

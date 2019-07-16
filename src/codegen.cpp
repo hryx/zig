@@ -122,7 +122,7 @@ CodeGen *codegen_create(Buf *main_pkg_path, Buf *root_src_path, const ZigTarget 
     g->out_type = out_type;
     g->import_table.init(32);
     g->builtin_fn_table.init(32);
-    g->primitive_type_table.init(32);
+    g->primitive_value_table.init(32);
     g->type_table.init(32);
     g->fn_type_table.init(32);
     g->error_table.init(16);
@@ -7110,6 +7110,16 @@ static const GlobalLinkageValue global_linkage_values[] = {
     {GlobalLinkageIdLinkOnce, "LinkOnce"},
 };
 
+static void register_named_primitive_type(CodeGen *g, ZigType *t) {
+    assert(g->builtin_types.entry_type != nullptr);
+    ConstExprValue *value = create_const_vals(1);
+    value->type = g->builtin_types.entry_type;
+    value->special = ConstValSpecialStatic;
+    value->parent.id = ConstParentIdNone;
+    value->data.x_type = t;
+    g->primitive_value_table.put(&t->name, value);
+}
+
 static void add_fp_entry(CodeGen *g, const char *name, uint32_t bit_count, LLVMTypeRef type_ref,
         ZigType **field)
 {
@@ -7124,7 +7134,7 @@ static void add_fp_entry(CodeGen *g, const char *name, uint32_t bit_count, LLVMT
     entry->llvm_di_type = ZigLLVMCreateDebugBasicType(g->dbuilder, buf_ptr(&entry->name),
             entry->size_in_bits, ZigLLVMEncoding_DW_ATE_float());
     *field = entry;
-    g->primitive_type_table.put(&entry->name, entry);
+    register_named_primitive_type(g, entry);
 }
 
 static void define_builtin_types(CodeGen *g) {
@@ -7135,16 +7145,22 @@ static void define_builtin_types(CodeGen *g) {
         g->builtin_types.entry_invalid = entry;
     }
     {
+        // Define the 'type' type first so that the others can refer to it.
+        ZigType *entry = new_type_table_entry(ZigTypeIdMetaType);
+        buf_init_from_str(&entry->name, "type");
+        g->builtin_types.entry_type = entry;
+        register_named_primitive_type(g, entry);
+    }
+    {
         ZigType *entry = new_type_table_entry(ZigTypeIdComptimeFloat);
         buf_init_from_str(&entry->name, "comptime_float");
-        g->builtin_types.entry_num_lit_float = entry;
-        g->primitive_type_table.put(&entry->name, entry);
+        register_named_primitive_type(g, entry);
     }
     {
         ZigType *entry = new_type_table_entry(ZigTypeIdComptimeInt);
         buf_init_from_str(&entry->name, "comptime_int");
         g->builtin_types.entry_num_lit_int = entry;
-        g->primitive_type_table.put(&entry->name, entry);
+        register_named_primitive_type(g, entry);
     }
     {
         ZigType *entry = new_type_table_entry(ZigTypeIdEnumLiteral);
@@ -7184,7 +7200,7 @@ static void define_builtin_types(CodeGen *g) {
                 size_in_bits, is_signed ? ZigLLVMEncoding_DW_ATE_signed() : ZigLLVMEncoding_DW_ATE_unsigned());
         entry->data.integral.is_signed = is_signed;
         entry->data.integral.bit_count = size_in_bits;
-        g->primitive_type_table.put(&entry->name, entry);
+        register_named_primitive_type(g, entry);
 
         get_c_int_type_ptr(g, info->id)[0] = entry;
     }
@@ -7199,7 +7215,7 @@ static void define_builtin_types(CodeGen *g) {
         entry->llvm_di_type = ZigLLVMCreateDebugBasicType(g->dbuilder, buf_ptr(&entry->name),
                 entry->size_in_bits, ZigLLVMEncoding_DW_ATE_boolean());
         g->builtin_types.entry_bool = entry;
-        g->primitive_type_table.put(&entry->name, entry);
+        register_named_primitive_type(g, entry);
     }
 
     for (size_t sign_i = 0; sign_i < array_length(is_signed_list); sign_i += 1) {
@@ -7221,7 +7237,7 @@ static void define_builtin_types(CodeGen *g) {
         entry->llvm_di_type = ZigLLVMCreateDebugBasicType(g->dbuilder, buf_ptr(&entry->name),
                 entry->size_in_bits,
                 is_signed ? ZigLLVMEncoding_DW_ATE_signed() : ZigLLVMEncoding_DW_ATE_unsigned());
-        g->primitive_type_table.put(&entry->name, entry);
+        register_named_primitive_type(g, entry);
 
         if (is_signed) {
             g->builtin_types.entry_isize = entry;
@@ -7244,7 +7260,7 @@ static void define_builtin_types(CodeGen *g) {
                 0,
                 ZigLLVMEncoding_DW_ATE_signed());
         g->builtin_types.entry_void = entry;
-        g->primitive_type_table.put(&entry->name, entry);
+        register_named_primitive_type(g, entry);
     }
     {
         ZigType *entry = new_type_table_entry(ZigTypeIdUnreachable);
@@ -7252,13 +7268,7 @@ static void define_builtin_types(CodeGen *g) {
         buf_init_from_str(&entry->name, "noreturn");
         entry->llvm_di_type = g->builtin_types.entry_void->llvm_di_type;
         g->builtin_types.entry_unreachable = entry;
-        g->primitive_type_table.put(&entry->name, entry);
-    }
-    {
-        ZigType *entry = new_type_table_entry(ZigTypeIdMetaType);
-        buf_init_from_str(&entry->name, "type");
-        g->builtin_types.entry_type = entry;
-        g->primitive_type_table.put(&entry->name, entry);
+        register_named_primitive_type(g, entry);
     }
 
     g->builtin_types.entry_u8 = get_int_type(g, false, 8);
@@ -7273,7 +7283,7 @@ static void define_builtin_types(CodeGen *g) {
     {
         g->builtin_types.entry_c_void = get_opaque_type(g, nullptr, nullptr, "c_void",
                 buf_create_from_str("c_void"));
-        g->primitive_type_table.put(&g->builtin_types.entry_c_void->name, g->builtin_types.entry_c_void);
+        register_named_primitive_type(g, g->builtin_types.entry_c_void);
     }
 
     {
@@ -7292,17 +7302,57 @@ static void define_builtin_types(CodeGen *g) {
 
         g->errors_by_index.append(nullptr);
 
-        g->primitive_type_table.put(&entry->name, entry);
+        register_named_primitive_type(g, entry);
     }
     {
         ZigType *entry = get_promise_type(g, nullptr);
-        g->primitive_type_table.put(&entry->name, entry);
+        register_named_primitive_type(g, entry);
         entry->size_in_bits = g->builtin_types.entry_usize->size_in_bits;
         entry->abi_align = g->builtin_types.entry_usize->abi_align;
         entry->abi_size = g->builtin_types.entry_usize->abi_size;
     }
 }
 
+static void define_builtin_values(CodeGen *g) {
+    {
+        assert(g->builtin_types.entry_bool != nullptr);
+        ConstExprValue *value = create_const_vals(1);
+        value->type = g->builtin_types.entry_bool;
+        value->special = ConstValSpecialStatic;
+        value->parent.id = ConstParentIdNone;
+        value->data.x_bool = true;
+        g->builtin_values.x_true = value;
+        g->primitive_value_table.put(buf_create_from_str("true"), value);
+    }
+    {
+        assert(g->builtin_types.entry_bool != nullptr);
+        ConstExprValue *value = create_const_vals(1);
+        value->type = g->builtin_types.entry_bool;
+        value->special = ConstValSpecialStatic;
+        value->parent.id = ConstParentIdNone;
+        value->data.x_bool = false;
+        g->builtin_values.x_false = value;
+        g->primitive_value_table.put(buf_create_from_str("false"), value);
+    }
+    {
+        assert(g->builtin_types.entry_bool != nullptr);
+        ConstExprValue *value = create_const_vals(1);
+        value->type = g->builtin_types.entry_null;
+        value->special = ConstValSpecialStatic;
+        value->parent.id = ConstParentIdNone;
+        g->builtin_values.x_null = value;
+        g->primitive_value_table.put(buf_create_from_str("null"), value);
+    }
+    {
+        assert(g->builtin_types.entry_bool != nullptr);
+        ConstExprValue *value = create_const_vals(1);
+        value->type = g->builtin_types.entry_undef;
+        value->special = ConstValSpecialUndef;
+        value->parent.id = ConstParentIdNone;
+        g->builtin_values.x_undefined = value;
+        g->primitive_value_table.put(buf_create_from_str("undefined"), value);
+    }
+}
 
 static BuiltinFnEntry *create_builtin_fn(CodeGen *g, BuiltinFnId id, const char *name, size_t count) {
     BuiltinFnEntry *builtin_fn = allocate<BuiltinFnEntry>(1);
@@ -8184,6 +8234,7 @@ static void init(CodeGen *g) {
     g->dummy_di_file = nullptr;
 
     define_builtin_types(g);
+    define_builtin_values(g);
 
     IrInstruction *sentinel_instructions = allocate<IrInstruction>(2);
     g->invalid_instruction = &sentinel_instructions[0];
@@ -9761,4 +9812,3 @@ CodeGen *create_child_codegen(CodeGen *parent_gen, Buf *root_src_path, OutType o
 
     return child_gen;
 }
-

@@ -729,6 +729,16 @@ fn isType(name: []const u8) bool {
     return false;
 }
 
+const builtin_values = [_][]const u8{ "true", "false", "null", "undefined" };
+
+fn isValue(name: []const u8) bool {
+    for (builtin_values) |v| {
+        if (mem.eql(u8, v, name))
+            return true;
+    }
+    return false;
+}
+
 fn tokenizeAndPrintRaw(docgen_tokenizer: *Tokenizer, out: var, source_token: Token, raw_src: []const u8) !void {
     const src = mem.trim(u8, raw_src, " \n");
     try out.write("<code class=\"zig\">");
@@ -802,16 +812,6 @@ fn tokenizeAndPrintRaw(docgen_tokenizer: *Tokenizer, out: var, source_token: Tok
                 next_tok_is_fn = true;
             },
 
-            std.zig.Token.Id.Keyword_undefined,
-            std.zig.Token.Id.Keyword_null,
-            std.zig.Token.Id.Keyword_true,
-            std.zig.Token.Id.Keyword_false,
-            => {
-                try out.write("<span class=\"tok-null\">");
-                try writeEscaped(out, src[token.start..token.end]);
-                try out.write("</span>");
-            },
-
             std.zig.Token.Id.StringLiteral,
             std.zig.Token.Id.MultilineStringLiteralLine,
             std.zig.Token.Id.CharLiteral,
@@ -856,6 +856,10 @@ fn tokenizeAndPrintRaw(docgen_tokenizer: *Tokenizer, out: var, source_token: Tok
                     };
                     if (is_int or isType(src[token.start..token.end])) {
                         try out.write("<span class=\"tok-type\">");
+                        try writeEscaped(out, src[token.start..token.end]);
+                        try out.write("</span>");
+                    } else if (isValue(src[token.start..token.end])) {
+                        try out.write("<span class=\"tok-null\">");
                         try writeEscaped(out, src[token.start..token.end]);
                         try out.write("</span>");
                     } else {
