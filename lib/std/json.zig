@@ -87,6 +87,8 @@ pub const StreamingParser = struct {
     string_last_was_high_surrogate: bool,
     // Used inside of StringEscapeHexUnicode* states
     string_unicode_codepoint: u21,
+    // It takes 2 bytes to determine if this will be a forbidden codepoint.
+    previous_string_hex_byte: u8 = undefined,
     // When in .Number states, is the number a (still) valid integer?
     number_is_integer: bool,
 
@@ -581,22 +583,32 @@ pub const StreamingParser = struct {
                     // non-control ascii
                     p.string_last_was_high_surrogate = false;
                 },
-                0xC0...0xDF => {
+                0xC2...0xDF => {
                     p.state = .StringUtf8Byte1;
                 },
                 0xE0...0xEF => {
                     p.state = .StringUtf8Byte2;
                 },
-                0xF0...0xFF => {
+                0xF0...0xF4 => {
                     p.state = .StringUtf8Byte3;
+                    p.previous_string_hex_byte = c;
                 },
                 else => {
+                    // 80 to BF cannot be the first of a multibyte sequence.
+                    // C0 and C1 result in a disallowed "overlong" encoding of ASCII.
+                    // F5 to FF result in codepoints beyond U+10FFFF.
                     return error.InvalidUtf8Byte;
                 },
             },
 
             .StringUtf8Byte3 => switch (c >> 6) {
-                0b10 => p.state = .StringUtf8Byte2,
+                0b10 => {
+                    // Bytes F4A0xxyy are beyond U+10FFFF.
+                    if (@as(u16, p.previous_string_hex_byte) << 8 | c > 0xF48F) {
+                        return error.InvalidUtf8Byte;
+                    }
+                    p.state = .StringUtf8Byte2;
+                },
                 else => return error.InvalidUtf8Byte,
             },
 
